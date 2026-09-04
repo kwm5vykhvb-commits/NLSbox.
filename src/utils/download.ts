@@ -1,0 +1,97 @@
+import { Episode } from '../types';
+import { sanitizeFileName } from './sanitizeTitle';
+
+/**
+ * Extracts channel and messageId from an episode
+ */
+export function extractEpisodeMediaIds(episode: Episode): { channel: string; messageId: string | number } {
+  let channel = (episode.channel || '').trim().replace(/^@/, '');
+  let messageId: string | number = episode.message_id;
+
+  if (!channel && episode.download_url) {
+    const match = episode.download_url.match(/\/download\/([^/]+)\/(\d+)/);
+    if (match) {
+      channel = match[1];
+      if (!messageId) messageId = match[2];
+    }
+  }
+
+  if (!channel) {
+    channel = 'animes_vostfr';
+  }
+
+  return { channel, messageId };
+}
+
+/**
+ * Generates the local backend download URL which sets Content-Disposition: attachment
+ * to force mobile & desktop browsers to save the file into device internal storage (Downloads folder).
+ */
+export function getInternalStorageDownloadUrl(episode: Episode, backendUrl: string): string {
+  const { channel, messageId } = extractEpisodeMediaIds(episode);
+  const cleanBase = (backendUrl || 'https://nlsbox.onrender.com').replace(/\/+$/, '');
+  const fileName = sanitizeFileName(episode.file_name, episode.title);
+  return `/api/download/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}?filename=${encodeURIComponent(fileName)}&backend=${encodeURIComponent(cleanBase)}`;
+}
+
+/**
+ * Direct remote upstream download URL (e.g. Render / Telegram)
+ */
+export function getDirectRemoteDownloadUrl(episode: Episode, backendUrl: string): string {
+  const { channel, messageId } = extractEpisodeMediaIds(episode);
+  const cleanBase = (backendUrl || 'https://nlsbox.onrender.com').replace(/\/+$/, '');
+  return `${cleanBase}/download/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}`;
+}
+
+/**
+ * VLC URL scheme to open stream directly in VLC app
+ */
+export function getVlcStreamUrl(episode: Episode, backendUrl: string): string {
+  const directUrl = getDirectRemoteDownloadUrl(episode, backendUrl);
+  return `vlc://${directUrl}`;
+}
+
+/**
+ * Android Intent to open stream directly in any native Android video player (MX Player, VLC, Samsung Video, etc.)
+ */
+export function getAndroidIntentUrl(episode: Episode, backendUrl: string): string {
+  const directUrl = getDirectRemoteDownloadUrl(episode, backendUrl);
+  return `intent:${directUrl}#Intent;type=video/*;action=android.intent.action.VIEW;end`;
+}
+
+/**
+ * Triggers an actual browser download that places the video file directly into the device's storage.
+ */
+export function triggerDeviceDownload(episode: Episode, backendUrl: string): boolean {
+  try {
+    const downloadUrl = getInternalStorageDownloadUrl(episode, backendUrl);
+    const fileName = sanitizeFileName(episode.file_name, episode.title);
+
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.setAttribute('download', fileName);
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+
+    setTimeout(() => {
+      if (document.body.contains(a)) {
+        document.body.removeChild(a);
+      }
+    }, 2000);
+
+    return true;
+  } catch (err) {
+    console.error('[Download] Failed to trigger device download:', err);
+    // Fallback: window.open
+    try {
+      const fallbackUrl = getInternalStorageDownloadUrl(episode, backendUrl);
+      window.open(fallbackUrl, '_blank');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}

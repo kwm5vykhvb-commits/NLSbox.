@@ -1,0 +1,8 @@
+{
+  "name": "NLSbox",
+  "description": "Plateforme complète et rapide de streaming et téléchargement multimédia haute fidélité (Animés, Films, Séries, Musique, Scans).",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
