@@ -141,7 +141,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
               <p className="text-[11px] text-gray-400">
                 {type === 'request'
                   ? 'Vous ne trouvez pas ce que vous cherchez ? Demandez-le !'
-                  : 'Lien mort, problème vidéo ou erreur de canal'}
+                  : 'Lien mort, problème de lecture ou vidéo inaccessible'}
               </p>
             </div>
           </div>
@@ -240,7 +240,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
                 <label className="block text-[11px] font-bold text-gray-300 uppercase tracking-wider mb-1">
                   {type === 'request'
                     ? 'Nom du Film / Animé / Série souhaité'
-                    : 'Nom de la vidéo ou du canal concerné'}
+                    : 'Nom du média ou de la vidéo concernée'}
                 </label>
                 <input
                   type="text"

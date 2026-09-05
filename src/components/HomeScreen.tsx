@@ -7,6 +7,7 @@ import {
   AlertCircle,
   Tag,
   Layers,
+  Zap,
   ShieldCheck,
   Star,
   Sparkles,
@@ -723,12 +724,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             {isMulti ? (
               <>
                 <Layers className="w-3 h-3 text-purple-300" />
-                <span>Multi ({selectedChannels.length})</span>
+                <span>Multi-Sources</span>
               </>
             ) : (
               <>
-                <Tag className="w-3 h-3 text-purple-300" />
-                <span>#{activeChannel}</span>
+                <Zap className="w-3 h-3 text-amber-300" />
+                <span>Source Unique</span>
               </>
             )}
           </button>
@@ -921,8 +922,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                 <span>
                   {isMulti
-                    ? `Recherche sécurisée sur ${selectedChannels.length} flux...`
-                    : `Chargement du flux #${activeChannel}...`}
+                    ? 'Recherche étendue en cours...'
+                    : 'Chargement direct des contenus...'}
                 </span>
               </span>
             </div>

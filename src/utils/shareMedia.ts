@@ -23,8 +23,8 @@ export async function shareDirectMedia(
   if (category) params.set('cat', category);
 
   const shareUrl = `${baseUrl}?${params.toString()}`;
-  const shareTitle = episode.title || 'Média Remix NLSbox';
-  const shareText = `Regarde "${shareTitle}" directement sur Remix NLSbox :`;
+  const shareTitle = episode.title || 'Média NLSbox';
+  const shareText = `Regarde "${shareTitle}" directement sur NLSbox :`;
 
   if (typeof navigator !== 'undefined' && navigator.share) {
     try {

@@ -6,71 +6,69 @@ const DOWNLOADS_KEY = 'nlsbox_saved_downloads';
 
 export const DEFAULT_CHANNELS: ChannelInfo[] = [
   // 🎌 Animés
-  { id: 'animes_vostfr', name: 'Animes VOSTFR Général', category: 'anime', description: 'Dernières sorties anime en VOSTFR HD', episodesCount: 7 },
-  { id: 'one_piece_fr', name: 'One Piece FR', category: 'anime', description: 'Flux dédié à l\'équipage du Chapeau de Paille', episodesCount: 3 },
-  { id: 'jujutsu_kaisen_fr', name: 'Jujutsu Kaisen', category: 'anime', description: 'Arcs Shibuya & Exorcisme', episodesCount: 2 },
-  { id: 'demon_slayer_fr', name: 'Demon Slayer (Kimetsu)', category: 'anime', description: 'Hashira Training & Swordsmith Village', episodesCount: 4 },
-  { id: 'solo_leveling_fr', name: 'Solo Leveling', category: 'anime', description: 'Sung Jin-Woo - Arise', episodesCount: 3 },
+  { id: 'MANGA_PLUS1', name: 'animes', category: 'anime', description: 'Flux certifié anime', isCustom: true },
+  { id: 'ANIME_FLIX_VF', name: 'Animes', category: 'anime', description: 'Flux certifié anime', isCustom: true },
+  { id: 'animemangawarvf', name: 'Animés', category: 'anime', description: 'Flux certifié anime', isCustom: true },
+  { id: 'reincarne', name: 'Isekai', category: 'anime', description: 'Flux certifié anime', isCustom: true },
 
   // 🎬 Films & Séries
-  { id: 'films_box_fr', name: 'Films Box HD', category: 'movie_series', description: 'Films Box-Office en 1080p et 4K', episodesCount: 12 },
-  { id: 'series_streaming_fr', name: 'Séries TV & Netflix', category: 'movie_series', description: 'Saisons complètes VF et VOSTFR', episodesCount: 8 },
+  { id: 'Rev_FilmsEtSeries', name: 'Filmes & Séries', category: 'movie_series', description: 'Flux certifié movie_series', isCustom: true },
 
   // 🎵 Musique
-  { id: 'musique_hits_fr', name: 'Hits & Albums MP3', category: 'music', description: 'Morceaux 320kbps & Nouveautés', episodesCount: 15 },
-  { id: 'anime_ost_flac', name: 'Animé OST & Soundtracks', category: 'music', description: 'Musiques d\'Opening et Ending HD', episodesCount: 6 },
+  { id: 'UrbainMusicUsFr', name: 'URBAINMUSICUSFR', category: 'music', description: 'Exclu & Nouveautés', isCustom: true },
+  { id: 'NLS_music', name: 'Music NLS', category: 'music', description: 'Flux certifié music', isCustom: true },
 
   // 📄 Fichiers & Mangas
-  { id: 'mangas_scans_pdf', name: 'Mangas Scans & E-books', category: 'document', description: 'Scans VF, PDF & Tomes complets', episodesCount: 5 },
+  { id: 'MangaScanvf', name: 'Scan VF', category: 'document', description: 'Flux certifié document', isCustom: true },
 
   // 🎮 Jeux & Divertissement
-  { id: 'gaming_hub_fr', name: 'Jeux Vidéo & Divertissement', category: 'games', description: 'Gameplays, ROMs, APKs & Divertissement gaming', episodesCount: 8 },
-  { id: 'retro_gaming_roms', name: 'Rétrogaming & Emulateurs', category: 'games', description: 'Packs ROMs PS2, Switch, PSP & Guides', episodesCount: 4 },
+  { id: 'Rev_FilmsEtSeries', name: 'Jeux Vidéo & Fun', category: 'games', description: 'Flux divertissement certifié', isCustom: true },
 
   // 🖼️ Wallpapers & Fonds d'écran
-  { id: 'wallpapers_4k_anime', name: 'Wallpapers 4K & Anime Art', category: 'wallpapers', description: 'Fonds d\'écran ultra haute définition PC & Mobile', episodesCount: 20 },
-  { id: 'amoled_art_wallpapers', name: 'AMOLED & Minimalist Art', category: 'wallpapers', description: 'Fonds d\'écran sombres 4K HDR & Illustrations', episodesCount: 14 },
+  { id: 'wallpprrrr', name: 'WALLPPRRRR', category: 'wallpapers', description: 'Flux certifié wallpapers', isCustom: true },
+  { id: 'wallpperz', name: 'Images & Fonds', category: 'wallpapers', description: 'Flux certifié wallpapers', isCustom: true },
 
   // 🔞 Espace Averti (+18 / Contenu Explicite)
-  { id: 'mature_zone_uncut', name: 'Espace Public Averti (+18)', category: 'mature', description: 'Mangas, Animés et Films avec scènes explicites ou non censurées (18+)', episodesCount: 6 },
+  { id: 'pornodrive', name: 'PORNODRIVE', category: 'mature', description: 'Contenu public averti (+18)', isCustom: true },
+  { id: 'Brazzers_prem_tube', name: 'Hot', category: 'mature', description: 'Flux certifié mature', isCustom: true },
 ];
 
 export const DEFAULT_PRIMARY_CHANNELS: Record<HubCategory, string> = {
-  anime: 'animes_vostfr',
-  movie_series: 'films_box_fr',
-  music: 'musique_hits_fr',
-  document: 'mangas_scans_pdf',
-  games: 'gaming_hub_fr',
-  wallpapers: 'wallpapers_4k_anime',
-  mature: 'mature_zone_uncut',
+  anime: 'MANGA_PLUS1',
+  movie_series: 'Rev_FilmsEtSeries',
+  music: 'UrbainMusicUsFr',
+  document: 'MangaScanvf',
+  games: 'Rev_FilmsEtSeries',
+  wallpapers: 'wallpprrrr',
+  mature: 'pornodrive',
 };
 
 export const DEFAULT_BACKUP_CHANNELS: Record<HubCategory, string> = {
-  anime: 'one_piece_fr',
-  movie_series: 'series_streaming_fr',
-  music: 'anime_ost_flac',
-  document: 'mangas_scans_pdf',
-  games: 'retro_gaming_roms',
-  wallpapers: 'amoled_art_wallpapers',
-  mature: 'mature_zone_uncut',
+  anime: 'ANIME_FLIX_VF',
+  movie_series: 'Rev_FilmsEtSeries',
+  music: 'NLS_music',
+  document: 'MangaScanvf',
+  games: 'Rev_FilmsEtSeries',
+  wallpapers: 'wallpperz',
+  mature: 'Brazzers_prem_tube',
 };
 
 export const DEFAULT_MULTI_CHANNELS: Record<HubCategory, string[]> = {
-  anime: ['animes_vostfr', 'one_piece_fr', 'jujutsu_kaisen_fr', 'demon_slayer_fr', 'solo_leveling_fr'],
-  movie_series: ['films_box_fr', 'series_streaming_fr'],
-  music: ['musique_hits_fr', 'anime_ost_flac'],
-  document: ['mangas_scans_pdf'],
-  games: ['gaming_hub_fr', 'retro_gaming_roms'],
-  wallpapers: ['wallpapers_4k_anime', 'amoled_art_wallpapers'],
-  mature: ['mature_zone_uncut'],
+  anime: ['MANGA_PLUS1', 'ANIME_FLIX_VF', 'animemangawarvf', 'reincarne'],
+  movie_series: ['Rev_FilmsEtSeries'],
+  music: ['UrbainMusicUsFr', 'NLS_music'],
+  document: ['MangaScanvf'],
+  games: ['Rev_FilmsEtSeries'],
+  wallpapers: ['wallpprrrr', 'wallpperz'],
+  mature: ['pornodrive', 'Brazzers_prem_tube'],
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
   backendUrl: 'https://nlsbox.onrender.com',
   activeCategory: 'anime',
-  activeChannel: 'animes_vostfr',
-  searchMode: 'single',
-  selectedChannels: ['animes_vostfr'],
+  activeChannel: 'MANGA_PLUS1',
+  searchMode: 'multi',
+  selectedChannels: ['MANGA_PLUS1', 'ANIME_FLIX_VF', 'animemangawarvf', 'reincarne'],
   primaryChannelsByCategory: DEFAULT_PRIMARY_CHANNELS,
   backupChannelsByCategory: DEFAULT_BACKUP_CHANNELS,
   multiChannelsByCategory: DEFAULT_MULTI_CHANNELS,
@@ -92,6 +90,7 @@ export class StorageService {
         return {
           ...DEFAULT_SETTINGS,
           ...parsed,
+          searchMode: parsed.searchMode || 'multi',
           savedChannels: Array.isArray(parsed.savedChannels) && parsed.savedChannels.length > 0
             ? parsed.savedChannels
             : DEFAULT_CHANNELS,
@@ -117,10 +116,24 @@ export class StorageService {
       if (data) {
         const list: DownloadTask[] = JSON.parse(data);
         if (Array.isArray(list)) {
-          return list.map(d => ({
-            ...d,
-            episode: sanitizeEpisode(d.episode),
-          }));
+          let hasDirtyData = false;
+          const sanitized = list.map(d => {
+            const cleanEp = sanitizeEpisode(d.episode);
+            if (cleanEp.title !== d.episode?.title || cleanEp.file_name !== d.episode?.file_name) {
+              hasDirtyData = true;
+            }
+            return {
+              ...d,
+              episode: cleanEp,
+            };
+          });
+
+          // If legacy downloads contained dirty links/tags, rewrite cleanly to localStorage
+          if (hasDirtyData) {
+            this.saveDownloads(sanitized);
+          }
+
+          return sanitized;
         }
       }
     } catch {

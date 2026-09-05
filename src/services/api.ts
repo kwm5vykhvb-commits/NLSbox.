@@ -23,16 +23,15 @@ export class NlsApiService {
   }
 
   /**
-   * Execute single search request either via local Express proxy or direct Render backend
+   * Execute single search request securely via local Express proxy
    */
   private static async executeSingleSearch(
-    cleanBase: string,
+    _cleanBase: string,
     cleanChannel: string,
     searchQuery: string
   ): Promise<CatalogResponse> {
-    // 1. First attempt: call local server proxy /api/search
     try {
-      const proxyUrl = `/api/search?channel=${encodeURIComponent(cleanChannel)}&q=${encodeURIComponent(searchQuery)}&backend=${encodeURIComponent(cleanBase)}`;
+      const proxyUrl = `/api/search?channel=${encodeURIComponent(cleanChannel)}&q=${encodeURIComponent(searchQuery)}`;
       const response = await fetch(proxyUrl, {
         method: 'GET',
         headers: { Accept: 'application/json' },
@@ -56,45 +55,7 @@ export class NlsApiService {
         throw new Error(data?.error || data?.detail || `Erreur serveur ${response.status}`);
       }
     } catch (proxyErr: any) {
-      // 2. Direct fallback to Render backend
-      try {
-        const directUrl = `${cleanBase}/search?q=${encodeURIComponent(searchQuery)}&channel=${encodeURIComponent(cleanChannel)}`;
-        const directRes = await fetch(directUrl, {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-        });
-
-        const directData = await directRes.json().catch(() => ({}));
-
-        if (directRes.ok) {
-          let list = [];
-          if (Array.isArray(directData)) list = directData;
-          else if (Array.isArray(directData.episodes)) list = directData.episodes;
-          else if (Array.isArray(directData.results)) list = directData.results;
-
-          return {
-            channel: cleanChannel,
-            query: searchQuery,
-            total_found: list.length,
-            episodes: list.map((item: any) =>
-              sanitizeEpisode({
-                message_id: item.message_id || item.id,
-                title: item.title || item.name || item.caption || item.file_name || `Épisode #${item.message_id || item.id}`,
-                file_name: item.file_name || item.fileName || `video_${item.message_id || item.id}.mp4`,
-                size_mb: item.size_mb || item.sizeMb || (item.file_size ? Math.round(item.file_size / (1024 * 1024) * 10) / 10 : 0),
-                download_url: item.download_url || `/download/${cleanChannel}/${item.message_id || item.id}`,
-                quality: item.quality || 'HD',
-                date_added: item.date_added || 'Récent',
-                channel: cleanChannel,
-              })
-            ),
-          };
-        }
-
-        throw new Error(directData?.detail || directData?.error || proxyErr?.message || 'Erreur lors de la recherche');
-      } catch (err: any) {
-        throw new Error(err?.message || 'Impossible de joindre le serveur');
-      }
+      throw new Error(proxyErr?.message || 'Impossible de joindre le serveur de recherche');
     }
 
     return {

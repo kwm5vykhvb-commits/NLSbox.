@@ -212,7 +212,8 @@ export const DownloadsScreen: React.FC<DownloadsScreenProps> = ({
                         {/* Download again to phone storage */}
                         <a
                           href={deviceDownloadUrl}
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.preventDefault();
                             setDownloadingId(task.episode.message_id);
                             triggerDeviceDownload(task.episode, backendUrl);
                             setTimeout(() => setDownloadingId(null), 2500);

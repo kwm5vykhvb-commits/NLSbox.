@@ -1,6 +1,6 @@
 import { JikanAnimeData, JikanCharacterData, Episode } from '../types';
 import { offlineCacheService } from './offlineCacheService';
-import { cleanTitleText } from '../utils/sanitizeTitle';
+import { cleanTitleText, sanitizeDisplayTitle } from '../utils/sanitizeTitle';
 
 const JIKAN_BASE_URL = 'https://api.jikan.moe/v4';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours cache for anime metadata
@@ -57,19 +57,10 @@ export class JikanService {
 
   /**
    * Clean display title for better UI reading
-   * Example: "[FS]_Solo_Leveling_S01E04_1080p.mp4" => "Solo Leveling - Épisode 4"
+   * Example: "[FS]_Solo_Leveling_S01E04_1080p.mp4" => "Solo Leveling S1 E4"
    */
   static formatDisplayTitle(rawTitle: string, rawFilename: string): string {
-    const text = rawTitle || rawFilename || 'Épisode';
-    let clean = cleanTitleText(text);
-    clean = clean.replace(/\.(mp4|mkv|avi|mov|flv|webm)$/i, '');
-    clean = clean.replace(/\[[^\]]*\]/g, ' ');
-    clean = clean.replace(/\([^)]*\)/g, ' ');
-    clean = clean.replace(/[_\.]+/g, ' ');
-    clean = clean.replace(/\b(1080p|720p|480p|2160p|4k|fhd|hd|hevc|x264|x265|aac|fansub|bluray|bdrip|web-dl|webrip)\b/gi, ' ');
-    clean = clean.replace(/\s{2,}/g, ' ').trim();
-
-    return clean || cleanTitleText(rawTitle) || cleanTitleText(rawFilename) || 'Épisode';
+    return sanitizeDisplayTitle(rawTitle, rawFilename);
   }
 
   /**

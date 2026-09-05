@@ -367,7 +367,7 @@ export const AnimeDetailsModal: React.FC<AnimeDetailsModalProps> = ({
                       <span>Explorer tous les épisodes</span>
                     </h5>
                     <p className="text-[11px] text-gray-300 truncate">
-                      Rechercher "{mainTitle}" sur tous vos canaux Telegram connectés
+                      Rechercher "{mainTitle}" dans l'ensemble du catalogue
                     </p>
                   </div>
                   <button

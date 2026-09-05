@@ -51,29 +51,51 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({
   // Media Classification (Zero external API, pure native filename analysis)
   const meta = MediaClassifier.analyze(episode.title, episode.file_name);
 
-  const isManga =
-    meta.isDocument ||
-    episode.channel?.toLowerCase().includes('manga') ||
-    episode.channel?.toLowerCase().includes('scan') ||
+  // A file is strictly a video if its extension or metadata matches video standards
+  const isVideo = meta.isVideo || MediaClassifier.isVideoFile(episode.title, episode.file_name);
+  const isAudio = meta.isAudio || MediaClassifier.isAudioFile(episode.title, episode.file_name);
+
+  // Strictly identify document/scan formats (PDF, CBZ, CBR, EPUB)
+  const isDocExt =
     episode.file_name?.toLowerCase().endsWith('.cbz') ||
     episode.file_name?.toLowerCase().endsWith('.cbr') ||
-    episode.file_name?.toLowerCase().endsWith('.pdf');
+    episode.file_name?.toLowerCase().endsWith('.pdf') ||
+    episode.file_name?.toLowerCase().endsWith('.epub') ||
+    episode.title?.toLowerCase().endsWith('.cbz') ||
+    episode.title?.toLowerCase().endsWith('.cbr') ||
+    episode.title?.toLowerCase().endsWith('.pdf');
 
-  const isImageFile =
-    meta.isImage ||
-    episode.channel?.toLowerCase().includes('wallpaper') ||
+  const isImageExt =
     episode.file_name?.toLowerCase().endsWith('.png') ||
     episode.file_name?.toLowerCase().endsWith('.jpg') ||
+    episode.file_name?.toLowerCase().endsWith('.jpeg') ||
     episode.file_name?.toLowerCase().endsWith('.webp');
+
+  // A file can ONLY be a Manga / Scan if it is strictly NOT a video and NOT an audio!
+  const isManga =
+    !isVideo &&
+    !isAudio &&
+    (meta.isDocument ||
+      isDocExt ||
+      ((episode.channel?.toLowerCase().includes('manga') || episode.channel?.toLowerCase().includes('scan')) && isDocExt));
+
+  // A file is an image only if it is NOT a video and NOT an audio
+  const isImageFile =
+    !isVideo &&
+    !isAudio &&
+    !isManga &&
+    (meta.isImage ||
+      isImageExt ||
+      MediaClassifier.isImageFile(episode.title, episode.file_name));
 
   // Determine the best display poster (only for animes or when explicit poster provided)
   const [poster, setPoster] = useState<string | undefined>(() => {
-    if (meta.isAudio || meta.isDocument) return undefined;
+    if (meta.isAudio || isManga || meta.isDocument) return undefined;
     return passedPoster || episode.thumbnail || JikanService.getCachedPoster(episode.title || episode.file_name);
   });
 
   useEffect(() => {
-    if (meta.isAudio || meta.isDocument) {
+    if (meta.isAudio || isManga || meta.isDocument) {
       setPoster(undefined);
       return;
     }
@@ -86,7 +108,7 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({
       return;
     }
 
-    if (meta.type === 'anime') {
+    if (meta.type === 'anime' || isVideo) {
       const cached = JikanService.getCachedPoster(episode.title || episode.file_name);
       if (cached) {
         setPoster(cached);
@@ -106,7 +128,7 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({
         }
       }
     }
-  }, [passedPoster, episode.thumbnail, episode.title, episode.file_name, meta.type, meta.isAudio, meta.isDocument]);
+  }, [passedPoster, episode.thumbnail, episode.title, episode.file_name, meta.type, isVideo, meta.isAudio, isManga, meta.isDocument]);
 
   const displayTitle = meta.displayTitle || JikanService.formatDisplayTitle(episode.title, episode.file_name);
 

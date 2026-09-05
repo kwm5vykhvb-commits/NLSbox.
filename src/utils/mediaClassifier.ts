@@ -232,7 +232,7 @@ export class MediaClassifier {
 
     // 1. Mature Content (+18)
     if (isMature) {
-      let clean = raw.replace(/\.[a-z0-9]+$/i, '').replace(/[_\.]+/g, ' ').trim();
+      const clean = cleanTitleText(raw);
       return {
         type: 'mature',
         extension: ext,
@@ -251,7 +251,7 @@ export class MediaClassifier {
 
     // 2. Wallpapers & Images
     if (isWallpaper && (isImage || !isVideo)) {
-      let clean = raw.replace(/\.[a-z0-9]+$/i, '').replace(/[_\.]+/g, ' ').trim();
+      const clean = cleanTitleText(raw);
       return {
         type: 'wallpapers',
         extension: ext,
@@ -269,7 +269,7 @@ export class MediaClassifier {
 
     // 3. Games & Entertainment
     if (isGame && !isVideo) {
-      let clean = raw.replace(/\.[a-z0-9]+$/i, '').replace(/[_\.]+/g, ' ').trim();
+      const clean = cleanTitleText(raw);
       return {
         type: 'games',
         extension: ext,
@@ -287,7 +287,7 @@ export class MediaClassifier {
 
     // 4. Audio / Music
     if (isAudio) {
-      let clean = raw.replace(/\.[a-z0-9]+$/i, '');
+      let clean = cleanTitleText(raw);
       clean = clean.replace(/\[[^\]]*\]/g, ' ');
       clean = clean.replace(/\([^)]*(audio|video|official|lyrics|prod|feat|hd|320)[^)]*\)/gi, ' ');
       clean = clean.replace(/[_\.]+/g, ' ').trim();
@@ -320,7 +320,7 @@ export class MediaClassifier {
 
     // 5. Documents & Mangas Scans
     if (isDoc) {
-      let clean = raw.replace(/\.[a-z0-9]+$/i, '').replace(/[_\.]+/g, ' ').trim();
+      const clean = cleanTitleText(raw);
       return {
         type: 'document',
         extension: ext,
@@ -347,12 +347,7 @@ export class MediaClassifier {
       lower.includes('isekai') ||
       lower.includes('fansub');
 
-    let cleanVideo = raw.replace(/\.[a-z0-9]+$/i, '');
-    cleanVideo = cleanVideo.replace(/\[[^\]]*\]/g, ' ');
-    cleanVideo = cleanVideo.replace(/\([^)]*\)/g, ' ');
-    cleanVideo = cleanVideo.replace(/[_\.]+/g, ' ');
-    cleanVideo = cleanVideo.replace(/\b(1080p|720p|480p|2160p|4k|fhd|hd|hevc|x264|x265|aac|vostfr|vf|raw|multi|fansub|bluray|bdrip|web-dl|webrip)\b/gi, ' ');
-    cleanVideo = cleanVideo.replace(/\s{2,}/g, ' ').trim();
+    const cleanVideo = cleanTitleText(raw);
 
     if (isAnimePattern) {
       return {

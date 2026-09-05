@@ -27,51 +27,59 @@ export function extractEpisodeMediaIds(episode: Episode): { channel: string; mes
  * Generates the local backend download URL which sets Content-Disposition: attachment
  * to force mobile & desktop browsers to save the file into device internal storage (Downloads folder).
  */
-export function getInternalStorageDownloadUrl(episode: Episode, backendUrl: string): string {
+export function getInternalStorageDownloadUrl(episode: Episode, _backendUrl?: string): string {
   const { channel, messageId } = extractEpisodeMediaIds(episode);
-  const cleanBase = (backendUrl || 'https://nlsbox.onrender.com').replace(/\/+$/, '');
   const fileName = sanitizeFileName(episode.file_name, episode.title);
-  return `/api/download/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}?filename=${encodeURIComponent(fileName)}&backend=${encodeURIComponent(cleanBase)}`;
+  return `/api/download/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}?filename=${encodeURIComponent(fileName)}`;
 }
 
 /**
- * Direct remote upstream download URL (e.g. Render / Telegram)
+ * Generates the local inline view URL for PDFs, images, manga scans, and documents
  */
-export function getDirectRemoteDownloadUrl(episode: Episode, backendUrl: string): string {
+export function getFileViewUrl(episode: Episode, _backendUrl?: string): string {
   const { channel, messageId } = extractEpisodeMediaIds(episode);
-  const cleanBase = (backendUrl || 'https://nlsbox.onrender.com').replace(/\/+$/, '');
-  return `${cleanBase}/download/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}`;
+  const fileName = sanitizeFileName(episode.file_name, episode.title);
+  return `/api/view/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}?filename=${encodeURIComponent(fileName)}`;
 }
 
 /**
- * VLC URL scheme to open stream directly in VLC app
+ * Secure stream/download URL that never leaks the raw remote backend host
  */
-export function getVlcStreamUrl(episode: Episode, backendUrl: string): string {
-  const directUrl = getDirectRemoteDownloadUrl(episode, backendUrl);
-  return `vlc://${directUrl}`;
+export function getDirectRemoteDownloadUrl(episode: Episode, _backendUrl?: string): string {
+  return getInternalStorageDownloadUrl(episode);
+}
+
+/**
+ * VLC URL scheme to open stream directly in VLC app through local proxy
+ */
+export function getVlcStreamUrl(episode: Episode, _backendUrl?: string): string {
+  const { channel, messageId } = extractEpisodeMediaIds(episode);
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const streamUrl = `${origin}/api/stream/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}`;
+  return `vlc://${streamUrl}`;
 }
 
 /**
  * Android Intent to open stream directly in any native Android video player (MX Player, VLC, Samsung Video, etc.)
  */
-export function getAndroidIntentUrl(episode: Episode, backendUrl: string): string {
-  const directUrl = getDirectRemoteDownloadUrl(episode, backendUrl);
-  return `intent:${directUrl}#Intent;type=video/*;action=android.intent.action.VIEW;end`;
+export function getAndroidIntentUrl(episode: Episode, _backendUrl?: string): string {
+  const { channel, messageId } = extractEpisodeMediaIds(episode);
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const streamUrl = `${origin}/api/stream/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}`;
+  return `intent:${streamUrl}#Intent;type=video/*;action=android.intent.action.VIEW;end`;
 }
 
 /**
  * Triggers an actual browser download that places the video file directly into the device's storage.
  */
-export function triggerDeviceDownload(episode: Episode, backendUrl: string): boolean {
+export function triggerDeviceDownload(episode: Episode, _backendUrl?: string): boolean {
   try {
-    const downloadUrl = getInternalStorageDownloadUrl(episode, backendUrl);
+    const downloadUrl = getInternalStorageDownloadUrl(episode);
     const fileName = sanitizeFileName(episode.file_name, episode.title);
 
     const a = document.createElement('a');
     a.href = downloadUrl;
     a.setAttribute('download', fileName);
-    a.setAttribute('target', '_blank');
-    a.setAttribute('rel', 'noopener noreferrer');
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
@@ -87,7 +95,7 @@ export function triggerDeviceDownload(episode: Episode, backendUrl: string): boo
     console.error('[Download] Failed to trigger device download:', err);
     // Fallback: window.open
     try {
-      const fallbackUrl = getInternalStorageDownloadUrl(episode, backendUrl);
+      const fallbackUrl = getInternalStorageDownloadUrl(episode);
       window.open(fallbackUrl, '_blank');
       return true;
     } catch {

@@ -22,6 +22,7 @@ import { AuthModal } from './components/AuthModal';
 import { NotificationModal } from './components/NotificationModal';
 import { FeedbackModal } from './components/FeedbackModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { SplashScreen } from './components/SplashScreen';
 import { MediaClassifier } from './utils/mediaClassifier';
 import { triggerDeviceDownload } from './utils/download';
 
@@ -275,6 +276,21 @@ export default function App() {
         }
 
         if (changed) {
+          const currentCat = next.activeCategory || 'anime';
+          if (next.primaryChannelsByCategory?.[currentCat]) {
+            next.activeChannel = next.primaryChannelsByCategory[currentCat];
+          }
+          if ((next.searchMode || 'multi') === 'multi') {
+            const catMulti = next.multiChannelsByCategory?.[currentCat];
+            if (Array.isArray(catMulti) && catMulti.length > 0) {
+              next.selectedChannels = catMulti;
+            } else {
+              const catAll = next.savedChannels.filter((c) => (c.category || 'anime') === currentCat).map((c) => c.id);
+              if (catAll.length > 0) next.selectedChannels = catAll;
+            }
+          } else {
+            next.selectedChannels = [next.activeChannel];
+          }
           StorageService.saveSettings(next);
           return next;
         }
@@ -316,13 +332,22 @@ export default function App() {
         ).catch(() => {});
       }
 
-      const mode = overrideConfig?.mode || settings.searchMode || 'single';
-      const singleChannel = overrideConfig?.channel || settings.activeChannel;
+      const mode = overrideConfig?.mode || settings.searchMode || 'multi';
+      const currentCat = settings.activeCategory || 'anime';
+      const singleChannel =
+        overrideConfig?.channel ||
+        settings.primaryChannelsByCategory?.[currentCat] ||
+        settings.activeChannel ||
+        'MANGA_PLUS1';
+
+      const categoryMulti = settings.multiChannelsByCategory?.[currentCat];
       const multiChannels =
         overrideConfig?.channels ||
-        (settings.selectedChannels && settings.selectedChannels.length > 0
+        (Array.isArray(categoryMulti) && categoryMulti.length > 0
+          ? categoryMulti
+          : settings.selectedChannels && settings.selectedChannels.length > 0
           ? settings.selectedChannels
-          : [settings.activeChannel]);
+          : [singleChannel]);
 
       try {
         if (mode === 'multi' && multiChannels.length > 1) {
@@ -545,20 +570,35 @@ export default function App() {
         ).catch(() => {});
       }
 
-      // Check if this item is a manga scan, comic, wallpaper, or document/image
+      // 1. Check if this item is strictly a video or audio FIRST
+      const isVideo = MediaClassifier.isVideoFile(episode.title || '', episode.file_name || '');
+      const isAudio = MediaClassifier.isAudioFile(episode.title || '', episode.file_name || '');
       const meta = MediaClassifier.analyze(episode.title || '', episode.file_name || '');
-      const isMangaOrImage =
-        meta.isImage ||
-        meta.isDocument ||
-        episode.channel?.toLowerCase().includes('manga') ||
-        episode.channel?.toLowerCase().includes('scan') ||
-        episode.channel?.toLowerCase().includes('wallpaper') ||
+
+      // 2. Identify strictly document/scan or image files
+      const isDocExt =
         episode.file_name?.toLowerCase().endsWith('.cbz') ||
         episode.file_name?.toLowerCase().endsWith('.cbr') ||
         episode.file_name?.toLowerCase().endsWith('.pdf') ||
+        episode.file_name?.toLowerCase().endsWith('.epub') ||
+        episode.title?.toLowerCase().endsWith('.cbz') ||
+        episode.title?.toLowerCase().endsWith('.cbr') ||
+        episode.title?.toLowerCase().endsWith('.pdf');
+
+      const isImageExt =
         episode.file_name?.toLowerCase().endsWith('.png') ||
         episode.file_name?.toLowerCase().endsWith('.jpg') ||
+        episode.file_name?.toLowerCase().endsWith('.jpeg') ||
         episode.file_name?.toLowerCase().endsWith('.webp');
+
+      // Only launch scan reader if strictly NOT a video, NOT an audio, and is actually a document or image
+      const isMangaOrImage =
+        !isVideo &&
+        !isAudio &&
+        (meta.isImage ||
+          meta.isDocument ||
+          isDocExt ||
+          isImageExt);
 
       if (isMangaOrImage) {
         setActiveScanManga({ episode, isOffline });
@@ -648,7 +688,7 @@ export default function App() {
         settings.primaryChannelsByCategory?.[currentCategory] ||
         categoryChannels[0]?.id ||
         settings.activeChannel ||
-        'animes_vostfr';
+        'MANGA_PLUS1';
 
       // Preselected multi channels for this category
       const multiChannels =
@@ -680,7 +720,7 @@ export default function App() {
   // Core Category switch logic with preselected channels
   const executeSelectCategory = useCallback(
     (category: HubCategory) => {
-      const mode = settings.searchMode || 'single';
+      const mode = settings.searchMode || 'multi';
       const categoryChannels = settings.savedChannels.filter(
         (c) => (c.category || 'anime') === category
       );
@@ -689,7 +729,7 @@ export default function App() {
       const primaryChannel =
         settings.primaryChannelsByCategory?.[category] ||
         categoryChannels[0]?.id ||
-        'animes_vostfr';
+        'MANGA_PLUS1';
 
       // Preselected multi channels
       const multiChannels =
@@ -806,13 +846,10 @@ export default function App() {
 
   if (isAuthLoading) {
     return (
-      <div className="min-h-screen bg-[#0E0E12] flex flex-col items-center justify-center p-4">
-        <div className="w-12 h-12 rounded-2xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center mb-4">
-          <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-        <h2 className="text-sm font-bold text-white">Initialisation de Remix NlsBox...</h2>
-        <p className="text-xs text-gray-400 mt-1">Connexion sécurisée aux services Firebase</p>
-      </div>
+      <SplashScreen
+        statusText="Démarrage de NLSbox..."
+        subText="Connexion et synchronisation des contenus..."
+      />
     );
   }
 
@@ -916,6 +953,7 @@ export default function App() {
         <ScanMangaViewerModal
           episode={activeScanManga.episode}
           isOffline={activeScanManga.isOffline}
+          backendUrl={settings.backendUrl}
           onClose={() => setActiveScanManga(null)}
         />
       )}
@@ -939,26 +977,23 @@ export default function App() {
         channels={settings.savedChannels}
         activeCategory={settings.activeCategory || 'anime'}
         activeChannel={settings.activeChannel}
-        searchMode={settings.searchMode || 'single'}
+        searchMode={settings.searchMode || 'multi'}
         selectedChannels={settings.selectedChannels || [settings.activeChannel]}
+        primaryChannelId={
+          settings.primaryChannelsByCategory?.[settings.activeCategory || 'anime'] ||
+          settings.activeChannel
+        }
         onSelectCategory={handleSelectCategory}
+        onToggleSearchMode={(newMode) => {
+          handleToggleSearchMode(newMode);
+        }}
         onSelectSingleChannel={(channelId) => {
           handleSelectSingleChannel(channelId);
           setIsChannelModalOpen(false);
         }}
-        onUpdateMultiChannels={(channels, mode) => {
-          const updated: AppSettings = {
-            ...settings,
-            searchMode: mode,
-            selectedChannels: channels,
-            activeChannel: channels[0] || settings.activeChannel,
-          };
-          handleUpdateSettings(updated);
-          performSearch('', {
-            mode,
-            channel: channels[0] || settings.activeChannel,
-            channels,
-          });
+        onUpdateMultiChannels={(_channels, mode) => {
+          handleToggleSearchMode(mode);
+          setIsChannelModalOpen(false);
         }}
       />
 

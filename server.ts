@@ -19,19 +19,14 @@ async function startServer() {
   app.get('/api/health', async (req, res) => {
     try {
       const response = await fetch(`${RENDER_BACKEND_URL}/`, { signal: AbortSignal.timeout(6000) });
-      const data = await response.json().catch(() => ({ status: 'unknown' }));
       res.json({
         app: 'NLSbox Fullstack API',
-        renderBackend: RENDER_BACKEND_URL,
         backendStatus: response.ok ? 'connected' : 'error',
-        renderResponse: data,
       });
-    } catch (err: any) {
+    } catch {
       res.json({
         app: 'NLSbox Fullstack API',
-        renderBackend: RENDER_BACKEND_URL,
         backendStatus: 'unreachable',
-        error: err?.message,
       });
     }
   });
@@ -251,7 +246,7 @@ async function startServer() {
       const response = await fetch(targetUrl, {
         method: 'GET',
         headers,
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(60000),
       });
 
       const contentType = response.headers.get('content-type') || '';
@@ -297,6 +292,78 @@ async function startServer() {
       if (ext === 'mp4') res.setHeader('Content-Type', 'video/mp4');
       else if (ext === 'mkv') res.setHeader('Content-Type', 'video/x-matroska');
       else if (ext === 'mp3') res.setHeader('Content-Type', 'audio/mpeg');
+      else if (ext === 'pdf') res.setHeader('Content-Type', 'application/pdf');
+      else if (ext === 'png') res.setHeader('Content-Type', 'image/png');
+      else if (ext === 'jpg' || ext === 'jpeg') res.setHeader('Content-Type', 'image/jpeg');
+      else if (ext === 'webp') res.setHeader('Content-Type', 'image/webp');
+      else if (ext === 'cbz' || ext === 'zip') res.setHeader('Content-Type', 'application/zip');
+      else res.setHeader('Content-Type', 'application/octet-stream');
+    }
+
+    try {
+      // @ts-ignore
+      const nodeStream = Readable.fromWeb(upstreamRes.body);
+      nodeStream.pipe(res);
+      req.on('close', () => {
+        nodeStream.destroy();
+      });
+    } catch {
+      res.end();
+    }
+  });
+
+  // 3c. Dedicated inline viewing endpoint (Content-Disposition: inline) for PDFs, Scans, and images
+  app.get('/api/view/:channel/:messageId', async (req, res) => {
+    const { channel, messageId } = req.params;
+    const rawFilename = (req.query.filename as string) || `doc_${channel}_${messageId}`;
+    const safeFilename = rawFilename.replace(/[/\\?%*:|"<>]/g, '_');
+    const customBackend = (req.query.backend as string) || RENDER_BACKEND_URL;
+    const cleanBase = customBackend.replace(/\/+$/, '');
+    const cleanChannel = channel.trim().replace(/^@/, '');
+    const targetUrl = `${cleanBase}/download/${cleanChannel}/${messageId}`;
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
+
+    const headers: Record<string, string> = {};
+    if (req.headers.range) {
+      headers['Range'] = req.headers.range;
+    }
+
+    let upstreamRes: Response | null = null;
+    try {
+      const response = await fetch(targetUrl, {
+        method: 'GET',
+        headers,
+        signal: AbortSignal.timeout(60000),
+      });
+
+      const contentType = response.headers.get('content-type') || '';
+      if ((response.ok || response.status === 206) && !contentType.includes('text/html') && !contentType.includes('application/json')) {
+        upstreamRes = response;
+      }
+    } catch {}
+
+    if (!upstreamRes || !upstreamRes.body) {
+      return res.status(502).json({ error: 'Fichier momentanément indisponible' });
+    }
+
+    res.status(upstreamRes.status);
+    const forwardHeaders = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
+    for (const h of forwardHeaders) {
+      const val = upstreamRes.headers.get(h);
+      if (val) res.setHeader(h, val);
+    }
+
+    const currentCT = upstreamRes.headers.get('content-type');
+    const ext = safeFilename.split('.').pop()?.toLowerCase();
+    if (!currentCT || currentCT === 'application/octet-stream') {
+      if (ext === 'pdf') res.setHeader('Content-Type', 'application/pdf');
+      else if (ext === 'png') res.setHeader('Content-Type', 'image/png');
+      else if (ext === 'jpg' || ext === 'jpeg') res.setHeader('Content-Type', 'image/jpeg');
+      else if (ext === 'webp') res.setHeader('Content-Type', 'image/webp');
+      else if (ext === 'cbz' || ext === 'zip') res.setHeader('Content-Type', 'application/zip');
+      else if (ext === 'mp4') res.setHeader('Content-Type', 'video/mp4');
       else res.setHeader('Content-Type', 'application/octet-stream');
     }
 
