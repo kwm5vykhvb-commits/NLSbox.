@@ -23,6 +23,7 @@ import { NotificationModal } from './components/NotificationModal';
 import { FeedbackModal } from './components/FeedbackModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { SplashScreen } from './components/SplashScreen';
+import { Offline } from './pages/Offline';
 import { MediaClassifier } from './utils/mediaClassifier';
 import { triggerDeviceDownload } from './utils/download';
 
@@ -923,6 +924,14 @@ export default function App() {
             onClearStorage={handleClearStorage}
           />
         )}
+
+        {currentTab === 'offline' && (
+          <Offline
+            onPlayVideo={(episode, videoUrl) => {
+              setActivePlayer({ episode, videoUrl, isOffline: true });
+            }}
+          />
+        )}
       </main>
 
       {/* 3. Bottom App Navigation */}
@@ -944,7 +953,13 @@ export default function App() {
           videoUrl={activePlayer.videoUrl}
           isOffline={activePlayer.isOffline}
           backendUrl={settings.backendUrl}
-          onClose={() => setActivePlayer(null)}
+          onClose={() => {
+            // Libère le blob URL des lectures hors-ligne (OPFS) ; sans effet sur les URL réseau classiques.
+            if (activePlayer.videoUrl.startsWith('blob:')) {
+              URL.revokeObjectURL(activePlayer.videoUrl);
+            }
+            setActivePlayer(null);
+          }}
         />
       )}
 

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Home, Download, Settings } from 'lucide-react';
+import { Home, Download, Settings, HardDriveDownload } from 'lucide-react';
 
-export type NavTab = 'home' | 'downloads' | 'settings';
+export type NavTab = 'home' | 'downloads' | 'settings' | 'offline';
 
 interface BottomNavProps {
   currentTab: NavTab;
@@ -56,6 +56,24 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             )}
           </div>
           <span className="text-[10px] mt-0.5">Téléchargements</span>
+        </button>
+
+        {/* Hors-ligne (OPFS) */}
+        <button
+          onClick={() => onTabChange('offline')}
+          className={`flex flex-col items-center justify-center py-0.5 px-3 rounded-lg transition-all cursor-pointer ${
+            currentTab === 'offline'
+              ? 'text-sky-400 font-bold'
+              : 'text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <div className="relative">
+            <HardDriveDownload className="w-4 h-4" />
+            {currentTab === 'offline' && (
+              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-sky-500 rounded-full" />
+            )}
+          </div>
+          <span className="text-[10px] mt-0.5">Hors-ligne</span>
         </button>
 
         {/* Paramètres */}
