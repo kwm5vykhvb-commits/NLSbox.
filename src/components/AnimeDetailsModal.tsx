@@ -21,6 +21,9 @@ import {
 } from 'lucide-react';
 import { JikanAnimeData, JikanCharacterData, Episode } from '../types';
 import { JikanService } from '../services/jikan';
+import { getInternalStorageDownloadUrl } from '../utils/download';
+import { sanitizeFileName } from '../utils/sanitizeTitle';
+import { OfflineButton } from './OfflineButton';
 
 interface AnimeDetailsModalProps {
   anime: JikanAnimeData | null;
@@ -223,6 +226,14 @@ export const AnimeDetailsModal: React.FC<AnimeDetailsModalProps> = ({
                   <Download className="w-4 h-4 text-purple-400" />
                 </button>
               )}
+              {/* Universal offline button (OPFS) - additive, works for any file type */}
+              <OfflineButton
+                url={getInternalStorageDownloadUrl(episode)}
+                filename={sanitizeFileName(episode.file_name, episode.title)}
+                channelId={episode.channel}
+                messageId={episode.message_id}
+                variant="icon"
+              />
             </div>
           </div>
         )}

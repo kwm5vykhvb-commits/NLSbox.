@@ -34,6 +34,7 @@ import { Episode } from '../types';
 import { MediaClassifier } from '../utils/mediaClassifier';
 import { shareDirectMedia } from '../utils/shareMedia';
 import { offlineCacheService } from '../services/offlineCacheService';
+import { OfflineButton } from './OfflineButton';
 import {
   getInternalStorageDownloadUrl,
   getDirectRemoteDownloadUrl,
@@ -642,6 +643,17 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                   <Download className="w-3.5 h-3.5 text-white" />
                   <span>Télécharger vers l'appareil</span>
                 </a>
+
+                {/* Universal offline button (OPFS) - additive, works for any file type */}
+                {!isOffline && (
+                  <OfflineButton
+                    url={deviceDownloadUrl}
+                    filename={episode.file_name}
+                    channelId={episode.channel}
+                    messageId={episode.message_id}
+                    variant="icon"
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -784,6 +796,17 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                       <Download className="w-4 h-4" />
                       <span>Télécharger vers l'appareil ({episode.size_mb || '0'} Mo)</span>
                     </a>
+
+                    {/* Universal offline button (OPFS) - additive, works for any file type */}
+                    {!isOffline && (
+                      <OfflineButton
+                        url={deviceDownloadUrl}
+                        filename={episode.file_name}
+                        channelId={episode.channel}
+                        messageId={episode.message_id}
+                        variant="full"
+                      />
+                    )}
 
                     {/* VLC 1-click launcher */}
                     <a
