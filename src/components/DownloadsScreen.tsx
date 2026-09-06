@@ -23,6 +23,7 @@ import {
   getAndroidIntentUrl,
   triggerDeviceDownload,
 } from '../utils/download';
+import { OfflineButton } from './OfflineButton';
 
 interface DownloadsScreenProps {
   activeDownloads: Record<number, DownloadTask>;
@@ -258,6 +259,15 @@ export const DownloadsScreen: React.FC<DownloadsScreenProps> = ({
                             <Smartphone className="w-3.5 h-3.5" />
                           </a>
                         )}
+
+                        {/* Universal offline button (OPFS) - additive, works for any file type */}
+                        <OfflineButton
+                          url={deviceDownloadUrl}
+                          filename={sanitizeFileName(task.episode.file_name, task.episode.title)}
+                          channelId={task.episode.channel}
+                          messageId={task.episode.message_id}
+                          variant="icon"
+                        />
 
                         {/* Delete action */}
                         <button

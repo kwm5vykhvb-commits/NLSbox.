@@ -28,6 +28,7 @@ import { Episode } from '../types';
 import { offlineCacheService } from '../services/offlineCacheService';
 import { StorageService } from '../services/storage';
 import { shareDirectMedia } from '../utils/shareMedia';
+import { OfflineButton } from './OfflineButton';
 import {
   requestFullscreenSafe,
   exitFullscreenSafe,
@@ -528,6 +529,17 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
             <Download className="w-4 h-4" />
           </button>
 
+          {/* Universal offline button (OPFS) - additive, works for any file type */}
+          {!isOffline && (
+            <OfflineButton
+              url={downloadUrl}
+              filename={episode.file_name}
+              channelId={episode.channel}
+              messageId={episode.message_id}
+              variant="icon"
+            />
+          )}
+
           {/* Share button */}
           <button
             id="btn-share-file"
@@ -604,6 +616,18 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
                   ({episode.size_mb ? `${episode.size_mb} Mo` : 'Fichier'})
                 </span>
               </button>
+
+              {/* Universal offline button (OPFS) - additive, works for any file type */}
+              {!isOffline && (
+                <OfflineButton
+                  url={downloadUrl}
+                  filename={episode.file_name}
+                  channelId={episode.channel}
+                  messageId={episode.message_id}
+                  variant="full"
+                  className="w-full"
+                />
+              )}
             </div>
 
             {/* Compatible Applications Guide */}

@@ -18,6 +18,9 @@ import { Episode, DownloadTask } from '../types';
 import { JikanService } from '../services/jikan';
 import { MediaClassifier } from '../utils/mediaClassifier';
 import { shareDirectMedia } from '../utils/shareMedia';
+import { getInternalStorageDownloadUrl } from '../utils/download';
+import { sanitizeFileName } from '../utils/sanitizeTitle';
+import { OfflineButton } from './OfflineButton';
 
 interface EpisodeCardProps {
   episode: Episode;
@@ -377,6 +380,15 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({
               <Download className="w-3.5 h-3.5 text-purple-400" />
             </button>
           )}
+
+          {/* Universal offline button (OPFS) - additive, works for any file type */}
+          <OfflineButton
+            url={getInternalStorageDownloadUrl(episode)}
+            filename={sanitizeFileName(episode.file_name, episode.title)}
+            channelId={episode.channel}
+            messageId={episode.message_id}
+            variant="icon"
+          />
         </div>
       </div>
     </div>
