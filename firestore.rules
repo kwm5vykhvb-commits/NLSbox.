@@ -25,10 +25,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // 3. Boîte à souhaits & Signalements : création possible pour tout utilisateur connecté,
-    // aucune lecture/modification/suppression côté client (gérées par la console admin).
+    // 3. Boîte à souhaits & Signalements : création possible pour tout le monde, y compris
+    // les visiteurs non connectés (l'app propose explicitement un « Envoi anonyme sécurisé »
+    // dans FeedbackModal). Aucune lecture/modification/suppression côté client (gérées par
+    // la console admin) : un create-only reste sans risque même sans authentification.
     match /feedback/{feedbackId} {
-      allow create: if isSignedIn();
+      allow create: if true;
       allow read, update, delete: if false;
     }
 
