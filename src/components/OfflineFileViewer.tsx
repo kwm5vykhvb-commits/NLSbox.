@@ -243,8 +243,10 @@ export const OfflineFileViewer: React.FC<OfflineFileViewerProps> = ({ record, bl
       return renderFallback(mangaError || undefined);
     }
 
-    // Fallback universel : archives (zip/rar/7z), CBR, epub/docx et tout autre
-    // format qui ne peut pas être prévisualisé nativement dans le navigateur.
+    // Fallback universel : documents non PDF/texte (epub/docx…) et tout
+    // autre format qui ne peut pas être prévisualisé nativement dans le
+    // navigateur. Les archives (CBZ/ZIP) passent par l'extraction JSZip
+    // ci-dessus ; seul un échec d'extraction (CBR/RAR/7z) y retombe.
     return renderFallback();
   };
 
