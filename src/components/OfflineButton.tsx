@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useOfflineManager, OfflineFileType, OfflineSaveMeta } from '../hooks/useOfflineManager';
+import { useOfflineManager, OfflineFileType, OfflineSaveMeta, OfflinePlaybackResult } from '../hooks/useOfflineManager';
 
 /**
  * Bouton universel "Hors-ligne", à ajouter À CÔTÉ des actions existantes
@@ -23,6 +23,14 @@ export interface OfflineButtonProps {
   /** 'icon' = bouton compact pour les rangées d'actions denses, 'full' = bouton avec libellé + barre de progression. */
   variant?: 'icon' | 'full';
   className?: string;
+  /**
+   * Appelé quand le fichier est DÉJÀ hors-ligne et que l'utilisateur clique sur le
+   * bouton (icône ✅) : doit OUVRIR/LIRE le fichier. Si absent, ouvre le blob dans
+   * un nouvel onglet par défaut.
+   * Ce bouton ne supprime JAMAIS le fichier hors-ligne : la suppression n'est
+   * possible que depuis la page /offline, avec confirmation.
+   */
+  onPlayOffline?: (result: OfflinePlaybackResult) => void;
 }
 
 const LABEL_SAVE = '⬇️ Hors-ligne';
@@ -37,8 +45,9 @@ export const OfflineButton: React.FC<OfflineButtonProps> = ({
   messageId,
   variant = 'icon',
   className = '',
+  onPlayOffline,
 }) => {
-  const { isSupported, saveOffline, deleteOffline, isFileOffline, getProgress } = useOfflineManager();
+  const { isSupported, saveOffline, playOffline, isFileOffline, getProgress } = useOfflineManager();
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
@@ -57,13 +66,26 @@ export const OfflineButton: React.FC<OfflineButtonProps> = ({
   const handleClick = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (!isSupported || isBusy || isSaving || !url) return;
+      if (!isSupported || isBusy || isSaving) return;
       setError(null);
       setIsBusy(true);
       try {
         if (isSaved) {
-          await deleteOffline(filename);
+          // Le fichier est DÉJÀ hors-ligne : on l'OUVRE/LIT, on ne le supprime
+          // JAMAIS depuis ce bouton. La suppression n'existe que sur /offline,
+          // avec une confirmation explicite de l'utilisateur.
+          const result = await playOffline(filename);
+          if (!result) {
+            if (mountedRef.current) setError('Fichier hors-ligne introuvable.');
+            return;
+          }
+          if (onPlayOffline) {
+            onPlayOffline(result);
+          } else if (typeof window !== 'undefined') {
+            window.open(result.blobUrl, '_blank', 'noopener,noreferrer');
+          }
         } else {
+          if (!url) return;
           const meta: OfflineSaveMeta = { channelId, messageId, type };
           await saveOffline(url, filename, mimeType || '', meta);
         }
@@ -76,7 +98,21 @@ export const OfflineButton: React.FC<OfflineButtonProps> = ({
         if (mountedRef.current) setIsBusy(false);
       }
     },
-    [isSupported, isBusy, isSaving, isSaved, url, deleteOffline, filename, saveOffline, mimeType, channelId, messageId, type]
+    [
+      isSupported,
+      isBusy,
+      isSaving,
+      isSaved,
+      url,
+      playOffline,
+      filename,
+      saveOffline,
+      mimeType,
+      channelId,
+      messageId,
+      type,
+      onPlayOffline,
+    ]
   );
 
   const label = isSaved ? LABEL_SAVED : LABEL_SAVE;
@@ -85,7 +121,7 @@ export const OfflineButton: React.FC<OfflineButtonProps> = ({
     : error
       ? error
       : isSaved
-        ? 'Copie hors-ligne disponible — cliquer pour la supprimer'
+        ? 'Copie hors-ligne disponible — cliquer pour lire'
         : 'Enregistrer une copie hors-ligne (lecture sans connexion ensuite)';
 
   if (variant === 'full') {
@@ -98,7 +134,7 @@ export const OfflineButton: React.FC<OfflineButtonProps> = ({
           aria-label={label}
           className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
             isSaved
-              ? 'bg-sky-500/15 text-sky-300 border-sky-500/30 hover:bg-sky-500/25'
+              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
               : 'bg-white/5 hover:bg-white/15 text-gray-200 border-white/10 hover:border-sky-500/40'
           }`}
         >
@@ -155,7 +191,7 @@ export const OfflineButton: React.FC<OfflineButtonProps> = ({
       aria-label={label}
       className={`p-1.5 rounded-lg transition-all cursor-pointer border shrink-0 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
         isSaved
-          ? 'bg-sky-500/15 text-sky-300 border-sky-500/30 hover:bg-sky-500/25'
+          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
           : 'bg-white/5 hover:bg-white/15 text-gray-300 hover:text-white border-white/5 hover:border-sky-500/40'
       } ${className}`}
     >
