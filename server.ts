@@ -9,23 +9,25 @@ import { createServer as createViteServer } from 'vite';
 
 const RENDER_BACKEND_URL = process.env.RENDER_BACKEND_URL || 'https://nlsbox.onrender.com';
 
-// Allow-list of hostnames the server is permitted to proxy/fetch to. Defaults to only the
-// configured backend's own hostname. Additional trusted mirrors can be added via the
-// ALLOWED_BACKEND_HOSTS env var (comma-separated hostnames).
-const ALLOWED_BACKEND_HOSTS = new Set(
-  [
-    new URL(RENDER_BACKEND_URL).hostname,
-    ...(process.env.ALLOWED_BACKEND_HOSTS || '').split(','),
-  ]
-    .map((h) => h.trim().toLowerCase())
-    .filter(Boolean)
-);
+// Allow-list mapping trusted hostnames to their own canonical base URL. Only backends listed
+// here may be selected via the client-supplied `?backend=` override, and only the map's own
+// (server-configured) values are ever returned — the client-supplied string itself is never
+// reused, which prevents SSRF (Server-Side Request Forgery) regardless of what is requested.
+// Additional trusted mirrors can be added via the ALLOWED_BACKEND_HOSTS env var (comma-separated
+// hostnames, always served over https).
+const ALLOWED_BACKENDS: Record<string, string> = {
+  [new URL(RENDER_BACKEND_URL).hostname.toLowerCase()]: RENDER_BACKEND_URL,
+};
+for (const rawHost of (process.env.ALLOWED_BACKEND_HOSTS || '').split(',')) {
+  const host = rawHost.trim().toLowerCase();
+  if (host) ALLOWED_BACKENDS[host] = `https://${host}`;
+}
 
 /**
- * Resolves the base backend URL to use for a request, validating any client-supplied
- * `?backend=` override against a strict allow-list to prevent SSRF (Server-Side Request
- * Forgery). Any unknown, malformed, or non-HTTP(S) value silently falls back to the
- * default trusted backend instead of being fetched.
+ * Resolves the base backend URL to use for a request. A client-supplied `?backend=` override is
+ * only ever used to look up a hostname in the ALLOWED_BACKENDS allow-list; the value actually
+ * returned always comes from that server-configured map (or the default backend), never from
+ * the client-supplied string itself, which prevents SSRF (Server-Side Request Forgery).
  */
 function resolveBackendBaseUrl(rawBackend?: string): string {
   if (!rawBackend) return RENDER_BACKEND_URL;
@@ -35,10 +37,7 @@ function resolveBackendBaseUrl(rawBackend?: string): string {
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return RENDER_BACKEND_URL;
     }
-    if (!ALLOWED_BACKEND_HOSTS.has(parsed.hostname.toLowerCase())) {
-      return RENDER_BACKEND_URL;
-    }
-    return parsed.toString().replace(/\/+$/, '');
+    return ALLOWED_BACKENDS[parsed.hostname.toLowerCase()] || RENDER_BACKEND_URL;
   } catch {
     return RENDER_BACKEND_URL;
   }
