@@ -42,6 +42,20 @@ import {
   triggerDeviceDownload,
 } from '../utils/download';
 
+/**
+ * Strictly checks the hostname (not a raw substring) so a page URL can't be
+ * mistaken for legacy Unsplash mock data just because "unsplash.com" happens
+ * to appear anywhere in the string (e.g. as part of an unrelated host or path).
+ */
+function isUnsplashUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === 'unsplash.com' || hostname.endsWith('.unsplash.com');
+  } catch {
+    return false;
+  }
+}
+
 interface ScanMangaViewerModalProps {
   episode: Episode | null;
   isOffline?: boolean;
@@ -202,7 +216,7 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
       if (!isMounted) return;
 
       // Discard legacy corrupt mock cache if found
-      const hasMockData = cached?.pages?.some((p) => p.includes('unsplash.com'));
+      const hasMockData = cached?.pages?.some((p) => isUnsplashUrl(p));
       if (cached && cached.pages && cached.pages.length > 0 && !hasMockData) {
         setPages(cached.pages);
         setIsCached(true);
