@@ -1,5 +1,5 @@
 import { CatalogResponse, Episode } from '../types';
-import { generateSearchVariants } from '../utils/searchHelper';
+import { generateSearchVariants, rankEpisodesByQuery } from '../utils/searchHelper';
 import { offlineCacheService } from './offlineCacheService';
 import { sanitizeEpisode } from '../utils/sanitizeTitle';
 
@@ -111,6 +111,13 @@ export class NlsApiService {
         }
       }
 
+      // Rank results so exact/prefix title or filename matches lead (fixes "exact match at
+      // bottom"). This only reorders episodes — it never removes any of them.
+      result = {
+        ...result,
+        episodes: rankEpisodesByQuery(result.episodes || [], query),
+      };
+
       // Save to in-memory and persistent offline cache
       queryCache.set(cacheKey, { data: result, timestamp: Date.now() });
       if (result.episodes && result.episodes.length > 0) {
@@ -201,9 +208,13 @@ export class NlsApiService {
       }
     }
 
+    // Rank the merged results across all channels so exact/prefix matches lead overall,
+    // never dropping any result (every channel's episodes are preserved).
+    const rankedEpisodes = rankEpisodesByQuery(uniqueEpisodes, query);
+
     return {
-      episodes: uniqueEpisodes,
-      totalFound: uniqueEpisodes.length,
+      episodes: rankedEpisodes,
+      totalFound: rankedEpisodes.length,
       channelResults,
     };
   }
