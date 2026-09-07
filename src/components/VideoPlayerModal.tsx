@@ -150,19 +150,27 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     });
   }, [episode]);
 
-  // Periodic position persistence
+  // Periodic position persistence. Latest currentTime/duration are read from refs
+  // (updated every render) instead of the effect's own dependencies: including them
+  // directly would tear down and recreate the interval on every timeupdate tick
+  // (several times per second), which never lets the 5s interval actually fire.
+  const currentTimeRef = useRef(currentTime);
+  const durationRef = useRef(duration);
+  currentTimeRef.current = currentTime;
+  durationRef.current = duration;
+
   useEffect(() => {
-    if (!episode || currentTime <= 0) return;
+    if (!episode) return;
     const interval = setInterval(() => {
-      if (currentTime > 5 && duration > 0) {
-        offlineCacheService.savePlaybackPosition(episode.message_id, currentTime, duration, {
+      if (currentTimeRef.current > 5 && durationRef.current > 0) {
+        offlineCacheService.savePlaybackPosition(episode.message_id, currentTimeRef.current, durationRef.current, {
           title: episode.title,
           channel: episode.channel,
         }).catch(() => {});
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [episode, currentTime, duration]);
+  }, [episode]);
 
   // Auto-hide controls for video
   const resetControlsTimeout = () => {
