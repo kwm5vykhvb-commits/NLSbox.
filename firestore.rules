@@ -2,39 +2,61 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
     // 1. Configuration globale & chaînes (synchronisation temps réel client <-> admin)
+    // Lecture publique requise : les listeners s'abonnent avant la résolution de
+    // l'authentification et ne se réabonnent pas après un refus de permission.
+    // Écriture réservée à la console admin (jamais au client).
     match /systemConfig/{docId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if false;
     }
 
-    // 2. Annonces & notifications (diffusion temps réel)
+    // 2. Annonces & notifications (diffusion temps réel) : lecture publique, écriture admin uniquement.
     match /notifications/{notifId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if false;
     }
 
-    // 3. Boîte à souhaits & Signalements (accessible à tous les utilisateurs en envoi, et lisible/gérable par l'app admin)
+    // 3. Boîte à souhaits & Signalements : création possible pour tout utilisateur connecté,
+    // aucune lecture/modification/suppression côté client (gérées par la console admin).
     match /feedback/{feedbackId} {
-      allow read, write: if true;
+      allow create: if isSignedIn();
+      allow read, update, delete: if false;
     }
 
-    // 4. Profils utilisateurs & sauvegardes Cloud
+    // 4. Profils utilisateurs & sauvegardes Cloud : uniquement le propriétaire du profil,
+    // et les champs de bannissement ne peuvent jamais être modifiés par l'utilisateur lui-même.
     match /users/{userId} {
-      allow read, write: if true;
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isBanned', 'bannedReason', 'bannedAt']);
+      allow delete: if false;
     }
 
-    // 5. Journal d'activité (logs d'utilisation & monitoring admin)
+    // 5. Journal d'activité (logs d'utilisation & monitoring admin) : création uniquement,
+    // et seulement pour son propre uid ; aucune lecture/modification côté client.
     match /userActivities/{activityId} {
-      allow read, write: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if false;
     }
 
-    // 6. Alertes de sécurité
+    // 6. Alertes de sécurité : réservées à la console admin, jamais accessibles au client.
     match /adminSecurityAlerts/{alertId} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
 
-    // Règle générale
+    // Règle générale : tout ce qui n'est pas explicitement autorisé ci-dessus est refusé.
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

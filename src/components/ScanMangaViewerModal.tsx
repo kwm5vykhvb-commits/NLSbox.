@@ -29,6 +29,7 @@ import { offlineCacheService } from '../services/offlineCacheService';
 import { StorageService } from '../services/storage';
 import { shareDirectMedia } from '../utils/shareMedia';
 import { OfflineButton } from './OfflineButton';
+import { useOfflineManager } from '../hooks/useOfflineManager';
 import {
   requestFullscreenSafe,
   exitFullscreenSafe,
@@ -40,6 +41,20 @@ import {
   getInternalStorageDownloadUrl,
   triggerDeviceDownload,
 } from '../utils/download';
+
+/**
+ * Strictly checks the hostname (not a raw substring) so a page URL can't be
+ * mistaken for legacy Unsplash mock data just because "unsplash.com" happens
+ * to appear anywhere in the string (e.g. as part of an unrelated host or path).
+ */
+function isUnsplashUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === 'unsplash.com' || hostname.endsWith('.unsplash.com');
+  } catch {
+    return false;
+  }
+}
 
 interface ScanMangaViewerModalProps {
   episode: Episode | null;
@@ -72,6 +87,8 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const webtoonRef = useRef<HTMLDivElement>(null);
+
+  const { files: offlineFiles, playOffline } = useOfflineManager();
 
   if (!episode) return null;
 
@@ -118,6 +135,22 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
     }
   }, [episode.message_id]);
 
+  // A genuine local (OPFS) copy of this exact episode, if the user separately saved it
+  // via the "Hors-ligne" button. Distinct from the legacy `isOffline` prop, which only
+  // means "downloaded via the browser's native Save dialog" and cannot be read back by
+  // JS — so `isOffline` alone is just a hint to look for a real local copy here.
+  const matchingOfflineRecord = React.useMemo(() => {
+    if (!isOffline) return null;
+    return (
+      offlineFiles.find(
+        (f) =>
+          Boolean(f.channelId) &&
+          f.channelId === episode.channel &&
+          String(f.messageId) === String(episode.message_id)
+      ) || null
+    );
+  }, [isOffline, offlineFiles, episode.channel, episode.message_id]);
+
   // Load real content dynamically based on media format
   useEffect(() => {
     let isMounted = true;
@@ -126,167 +159,197 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
     setZoomLevel(1);
     setErrorMessage(null);
     setDetectedPdfBlobUrl(null);
-
-    // 1. PDF Documents: Rendered directly via embedded viewer
-    if (isPdf) {
-      setIsLoading(false);
-      setPages([]);
-      return;
-    }
-
-    // 2. Single image or wallpaper: Directly point to the actual stream URL
-    if (isSingleImage || isWallpaper) {
-      setIsLoading(false);
-      setReadingMode('wallpaper');
-      setFitMode('contain');
-      setPages([viewUrl]);
-      return;
-    }
-
-    // 3. CBZ / ZIP / CBR Comic Archives or Scan Chapters
     setIsLoading(true);
-    setLoadingProgress('Vérification du cache...');
 
-    // Check offline cache first, while strictly rejecting any legacy mock Unsplash data!
-    offlineCacheService
-      .getMangaChapter(String(episode.message_id))
-      .then(async (cached) => {
-        if (!isMounted) return;
-
-        // Discard legacy corrupt mock cache if found
-        const hasMockData = cached?.pages?.some((p) => p.includes('unsplash.com'));
-        if (cached && cached.pages && cached.pages.length > 0 && !hasMockData) {
-          setPages(cached.pages);
-          setIsCached(true);
-          setIsLoading(false);
-          return;
-        }
-
-        setLoadingProgress('Chargement du chapitre scan...');
+    const run = async () => {
+      // Prefer a genuine local (OPFS) copy of this exact episode when one exists
+      // (saved separately via the "Hors-ligne" button) instead of always fetching
+      // over the network. Falls back to the network view URL when isOffline is
+      // false, no local copy exists, or the local read fails for any reason.
+      let effectiveUrl = viewUrl;
+      if (isOffline && matchingOfflineRecord) {
         try {
-          const response = await fetch(viewUrl);
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+          const localResult = await playOffline(matchingOfflineRecord.filename);
+          if (localResult && isMounted) {
+            createdBlobUrls.push(localResult.blobUrl);
+            effectiveUrl = localResult.blobUrl;
           }
-
-          const blob = await response.blob();
-          if (!isMounted) return;
-
-          // Magic-bytes detection to accurately detect file format
-          const headerBuffer = await blob.slice(0, 16).arrayBuffer();
-          const headerBytes = new Uint8Array(headerBuffer);
-          const headerStr = String.fromCharCode(...headerBytes.slice(0, 5));
-
-          // A. Is it a PDF? (%PDF)
-          if (headerStr.startsWith('%PDF')) {
-            const pdfBlob = new Blob([blob], { type: 'application/pdf' });
-            const pdfUrl = URL.createObjectURL(pdfBlob);
-            createdBlobUrls.push(pdfUrl);
-            setDetectedPdfBlobUrl(pdfUrl);
-            setIsLoading(false);
-            return;
-          }
-
-          // B. Is it a single image? (JPEG, PNG, WEBP, GIF)
-          const isJpg = headerBytes[0] === 0xff && headerBytes[1] === 0xd8;
-          const isPng =
-            headerBytes[0] === 0x89 &&
-            headerBytes[1] === 0x50 &&
-            headerBytes[2] === 0x4e &&
-            headerBytes[3] === 0x47;
-          const isWebp = headerStr.startsWith('RIFF');
-          const isGif = headerStr.startsWith('GIF8');
-
-          if (isJpg || isPng || isWebp || isGif) {
-            const imgUrl = URL.createObjectURL(blob);
-            createdBlobUrls.push(imgUrl);
-            setReadingMode('wallpaper');
-            setFitMode('contain');
-            setPages([imgUrl]);
-            setIsLoading(false);
-            return;
-          }
-
-          // C. Is it a RAR / CBR archive? (Rar!)
-          const isRar =
-            headerBytes[0] === 0x52 &&
-            headerBytes[1] === 0x61 &&
-            headerBytes[2] === 0x72 &&
-            headerBytes[3] === 0x21;
-          if (isRar || fileExt === 'cbr' || fileExt === 'rar') {
-            setIsLoading(false);
-            setErrorMessage(
-              'Ce chapitre est au format manga compressé CBR (archive RAR). Ce format propriétaire nécessite une application de lecture manga dédiée.'
-            );
-            return;
-          }
-
-          // D. Is it a ZIP / CBZ archive? (PK..)
-          const isZip = headerBytes[0] === 0x50 && headerBytes[1] === 0x4b;
-          if (isZip || isArchive) {
-            setLoadingProgress('Extraction des planches du manga...');
-            const zip = await JSZip.loadAsync(blob);
-
-            // Filter image files inside archive (ignoring __MACOSX / thumbs / hidden files)
-            const imageEntries = Object.keys(zip.files)
-              .filter(
-                (name) =>
-                  !zip.files[name].dir &&
-                  !name.includes('__MACOSX') &&
-                  !name.startsWith('.') &&
-                  /\.(jpe?g|png|webp|gif|bmp|avif|jfif)$/i.test(name)
-              )
-              .sort((a, b) =>
-                a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
-              );
-
-            if (imageEntries.length === 0) {
-              setIsLoading(false);
-              setErrorMessage(
-                "Ce chapitre compressé ne contient pas de planches d'images lisibles directement par le navigateur."
-              );
-              return;
-            }
-
-            const extractedPages: string[] = [];
-            for (const entryName of imageEntries) {
-              const fileBlob = await zip.file(entryName)!.async('blob');
-              const pageUrl = URL.createObjectURL(fileBlob);
-              createdBlobUrls.push(pageUrl);
-              extractedPages.push(pageUrl);
-            }
-
-            if (isMounted) {
-              setPages(extractedPages);
-              setIsLoading(false);
-              offlineCacheService
-                .saveMangaChapter(String(episode.message_id), extractedPages, episode.title)
-                .catch(() => {});
-            }
-            return;
-          }
-
-          // E. Other format
-          setIsLoading(false);
-          setErrorMessage(
-            "Ce fichier manga n'a pas pu être extrait automatiquement en planches."
-          );
-        } catch (err: any) {
-          if (isMounted) {
-            console.warn('Erreur décompression archive:', err);
-            setIsLoading(false);
-            setErrorMessage(
-              "Le fichier n'a pas pu être extrait automatiquement en planches."
-            );
-          }
+        } catch (err) {
+          console.warn('[ScanMangaViewerModal] Lecture hors-ligne indisponible, repli réseau:', err);
         }
-      })
-      .catch(() => {
+      }
+      if (!isMounted) return;
+
+      // 1. PDF Documents: Rendered directly via embedded viewer
+      if (isPdf) {
+        if (effectiveUrl.startsWith('blob:')) {
+          setDetectedPdfBlobUrl(effectiveUrl);
+        }
+        setIsLoading(false);
+        setPages([]);
+        return;
+      }
+
+      // 2. Single image or wallpaper: Directly point to the resolved content URL
+      if (isSingleImage || isWallpaper) {
+        setIsLoading(false);
+        setReadingMode('wallpaper');
+        setFitMode('contain');
+        setPages([effectiveUrl]);
+        return;
+      }
+
+      // 3. CBZ / ZIP / CBR Comic Archives or Scan Chapters
+      setLoadingProgress('Vérification du cache...');
+
+      // Check offline cache first, while strictly rejecting any legacy mock Unsplash data!
+      let cached;
+      try {
+        cached = await offlineCacheService.getMangaChapter(String(episode.message_id));
+      } catch {
         if (isMounted) {
           setIsLoading(false);
           setErrorMessage('Impossible de joindre le serveur pour extraire le fichier.');
         }
-      });
+        return;
+      }
+      if (!isMounted) return;
+
+      // Discard legacy corrupt mock cache if found
+      const hasMockData = cached?.pages?.some((p) => isUnsplashUrl(p));
+      if (cached && cached.pages && cached.pages.length > 0 && !hasMockData) {
+        setPages(cached.pages);
+        setIsCached(true);
+        setIsLoading(false);
+        return;
+      }
+
+      setLoadingProgress('Chargement du chapitre scan...');
+      try {
+        const response = await fetch(effectiveUrl);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        if (!isMounted) return;
+
+        // Magic-bytes detection to accurately detect file format
+        const headerBuffer = await blob.slice(0, 16).arrayBuffer();
+        const headerBytes = new Uint8Array(headerBuffer);
+        const headerStr = String.fromCharCode(...headerBytes.slice(0, 5));
+
+        // A. Is it a PDF? (%PDF)
+        if (headerStr.startsWith('%PDF')) {
+          const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+          const pdfUrl = URL.createObjectURL(pdfBlob);
+          createdBlobUrls.push(pdfUrl);
+          setDetectedPdfBlobUrl(pdfUrl);
+          setIsLoading(false);
+          return;
+        }
+
+        // B. Is it a single image? (JPEG, PNG, WEBP, GIF)
+        const isJpg = headerBytes[0] === 0xff && headerBytes[1] === 0xd8;
+        const isPng =
+          headerBytes[0] === 0x89 &&
+          headerBytes[1] === 0x50 &&
+          headerBytes[2] === 0x4e &&
+          headerBytes[3] === 0x47;
+        const isWebp = headerStr.startsWith('RIFF');
+        const isGif = headerStr.startsWith('GIF8');
+
+        if (isJpg || isPng || isWebp || isGif) {
+          const imgUrl = URL.createObjectURL(blob);
+          createdBlobUrls.push(imgUrl);
+          setReadingMode('wallpaper');
+          setFitMode('contain');
+          setPages([imgUrl]);
+          setIsLoading(false);
+          return;
+        }
+
+        // C. Is it a RAR / CBR archive? (Rar!)
+        const isRar =
+          headerBytes[0] === 0x52 &&
+          headerBytes[1] === 0x61 &&
+          headerBytes[2] === 0x72 &&
+          headerBytes[3] === 0x21;
+        if (isRar || fileExt === 'cbr' || fileExt === 'rar') {
+          setIsLoading(false);
+          setErrorMessage(
+            'Ce chapitre est au format manga compressé CBR (archive RAR). Ce format propriétaire nécessite une application de lecture manga dédiée.'
+          );
+          return;
+        }
+
+        // D. Is it a ZIP / CBZ archive? (PK..)
+        const isZip = headerBytes[0] === 0x50 && headerBytes[1] === 0x4b;
+        if (isZip || isArchive) {
+          setLoadingProgress('Extraction des planches du manga...');
+          const zip = await JSZip.loadAsync(blob);
+
+          // Filter image files inside archive (ignoring __MACOSX / thumbs / hidden files)
+          const imageEntries = Object.keys(zip.files)
+            .filter(
+              (name) =>
+                !zip.files[name].dir &&
+                !name.includes('__MACOSX') &&
+                !name.startsWith('.') &&
+                /\.(jpe?g|png|webp|gif|bmp|avif|jfif)$/i.test(name)
+            )
+            .sort((a, b) =>
+              a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+            );
+
+          if (imageEntries.length === 0) {
+            setIsLoading(false);
+            setErrorMessage(
+              "Ce chapitre compressé ne contient pas de planches d'images lisibles directement par le navigateur."
+            );
+            return;
+          }
+
+          const extractedPages: string[] = [];
+          for (const entryName of imageEntries) {
+            const fileBlob = await zip.file(entryName)!.async('blob');
+            const pageUrl = URL.createObjectURL(fileBlob);
+            createdBlobUrls.push(pageUrl);
+            extractedPages.push(pageUrl);
+          }
+
+          if (isMounted) {
+            setPages(extractedPages);
+            setIsLoading(false);
+            offlineCacheService
+              .saveMangaChapter(String(episode.message_id), extractedPages, episode.title)
+              .catch(() => {});
+          }
+          return;
+        }
+
+        // E. Other format
+        setIsLoading(false);
+        setErrorMessage(
+          "Ce fichier manga n'a pas pu être extrait automatiquement en planches."
+        );
+      } catch (err: any) {
+        if (isMounted) {
+          console.warn('Erreur décompression archive:', err);
+          setIsLoading(false);
+          setErrorMessage(
+            "Le fichier n'a pas pu être extrait automatiquement en planches."
+          );
+        }
+      }
+    };
+
+    run().catch(() => {
+      if (isMounted) {
+        setIsLoading(false);
+        setErrorMessage('Impossible de joindre le serveur pour extraire le fichier.');
+      }
+    });
 
     return () => {
       isMounted = false;
@@ -298,7 +361,18 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
         }
       });
     };
-  }, [episode.message_id, isPdf, isArchive, isSingleImage, isWallpaper, viewUrl, retryCount]);
+  }, [
+    episode.message_id,
+    isPdf,
+    isArchive,
+    isSingleImage,
+    isWallpaper,
+    viewUrl,
+    retryCount,
+    isOffline,
+    matchingOfflineRecord,
+    playOffline,
+  ]);
 
   // Fullscreen listener
   useEffect(() => {
