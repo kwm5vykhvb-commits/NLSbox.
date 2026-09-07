@@ -422,8 +422,19 @@ async function playOfflineCore(filename: string): Promise<OfflinePlaybackResult 
   const dirHandle = await getOfflineDirectoryHandle(false);
   const fileHandle = await dirHandle.getFileHandle(record.id);
   const file = await fileHandle.getFile();
-  const blobUrl = URL.createObjectURL(file);
-  return { blobUrl, blob: file, type: record.type };
+
+  // `FileSystemFileHandle.getFile()` ne garantit PAS un `file.type` fiable :
+  // selon le navigateur (en particulier iOS Safari), le type MIME déduit
+  // d'un fichier OPFS est souvent vide. Un blob sans type (ou mal typé)
+  // provoque "le navigateur n'a pas pu décoder" sur <video>/<audio>, et sur
+  // iOS le prompt système "Voulez-vous télécharger ou lire cette URL ?" au
+  // lieu d'une lecture inline. On force donc le vrai mime-type mémorisé à
+  // l'enregistrement (déterminé de façon fiable depuis l'extension au moment
+  // de la sauvegarde).
+  const mimeType = record.mimeType || guessMimeTypeFromFilename(record.filename);
+  const blob = file.type === mimeType ? file : new Blob([file], { type: mimeType });
+  const blobUrl = URL.createObjectURL(blob);
+  return { blobUrl, blob, type: record.type };
 }
 
 async function deleteOfflineCore(filename: string): Promise<boolean> {
