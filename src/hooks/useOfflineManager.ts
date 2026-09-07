@@ -337,26 +337,39 @@ async function performSave(
   url: string,
   filename: string,
   mimeType: string,
-  meta: OfflineSaveMeta
+  meta: OfflineSaveMeta,
+  preFetchedBlob?: Blob
 ): Promise<OfflineFileRecord> {
   emitProgress(id, 0);
   let dirHandle: FileSystemDirectoryHandle | null = null;
   let writable: FileSystemWritableFileStream | null = null;
 
   try {
-    const response = await fetch(url);
-    if (!response.ok || !response.body) {
-      throw new Error(`Téléchargement impossible (HTTP ${response.status})`);
+    // Si l'appelant a déjà téléchargé le fichier (ex: le bouton de téléchargement
+    // fusionné qui sauvegarde aussi vers l'appareil), on réutilise ce Blob au lieu
+    // de refaire une requête réseau identique (évite de consommer la donnée 2x).
+    let bodyStream: ReadableStream<Uint8Array>;
+    let totalBytes: number;
+
+    if (preFetchedBlob) {
+      bodyStream = preFetchedBlob.stream();
+      totalBytes = preFetchedBlob.size;
+    } else {
+      const response = await fetch(url);
+      if (!response.ok || !response.body) {
+        throw new Error(`Téléchargement impossible (HTTP ${response.status})`);
+      }
+      bodyStream = response.body;
+      totalBytes = Number(response.headers.get('content-length') || 0);
     }
 
-    const totalBytes = Number(response.headers.get('content-length') || 0);
     const type = meta.type || detectOfflineFileType(filename, mimeType);
 
     dirHandle = await getOfflineDirectoryHandle(true);
     const fileHandle = await dirHandle.getFileHandle(id, { create: true });
     writable = await fileHandle.createWritable();
 
-    const writtenBytes = await writeStreamInChunks(response.body, writable, (loaded) => {
+    const writtenBytes = await writeStreamInChunks(bodyStream, writable, (loaded) => {
       const percent = totalBytes > 0 ? Math.min(99, Math.round((loaded / totalBytes) * 100)) : 0;
       emitProgress(id, percent);
     });
@@ -368,7 +381,7 @@ async function performSave(
       id,
       filename,
       originalUrl: url,
-      mimeType: mimeType || guessMimeTypeFromFilename(filename),
+      mimeType: mimeType || preFetchedBlob?.type || guessMimeTypeFromFilename(filename),
       type,
       size: totalBytes || writtenBytes,
       channelId: meta.channelId,
@@ -396,7 +409,8 @@ async function saveOfflineCore(
   url: string,
   filename: string,
   mimeType: string,
-  meta: OfflineSaveMeta = {}
+  meta: OfflineSaveMeta = {},
+  preFetchedBlob?: Blob
 ): Promise<OfflineFileRecord> {
   if (!isOfflineStorageSupported()) {
     throw new Error(OPFS_UNSUPPORTED_MESSAGE);
@@ -407,7 +421,7 @@ async function saveOfflineCore(
   const existingTask = activeSaves.get(id);
   if (existingTask) return existingTask;
 
-  const task = performSave(id, url, filename, mimeType, meta);
+  const task = performSave(id, url, filename, mimeType, meta, preFetchedBlob);
   activeSaves.set(id, task);
   try {
     return await task;
@@ -523,10 +537,19 @@ export function useOfflineManager() {
   /**
    * Télécharge `url` en flux (ReadableStream) et l'écrit par chunks de 512KB
    * dans OPFS. Détecte automatiquement le type depuis l'extension/mime.
+   * Si `preFetchedBlob` est fourni (fichier déjà téléchargé par l'appelant,
+   * ex: le bouton de téléchargement fusionné), il est réutilisé tel quel et
+   * AUCUNE requête réseau supplémentaire n'est effectuée.
    */
   const saveOffline = useCallback(
-    async (url: string, filename: string, mimeType: string, meta?: OfflineSaveMeta): Promise<OfflineFileRecord> => {
-      const record = await saveOfflineCore(url, filename, mimeType, meta);
+    async (
+      url: string,
+      filename: string,
+      mimeType: string,
+      meta?: OfflineSaveMeta,
+      preFetchedBlob?: Blob
+    ): Promise<OfflineFileRecord> => {
+      const record = await saveOfflineCore(url, filename, mimeType, meta, preFetchedBlob);
       refresh();
       refreshStorageUsage();
       return record;

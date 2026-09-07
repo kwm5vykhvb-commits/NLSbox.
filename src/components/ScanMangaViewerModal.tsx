@@ -28,7 +28,8 @@ import { Episode } from '../types';
 import { offlineCacheService } from '../services/offlineCacheService';
 import { StorageService } from '../services/storage';
 import { shareDirectMedia } from '../utils/shareMedia';
-import { OfflineButton } from './OfflineButton';
+import { sanitizeFileName } from '../utils/sanitizeTitle';
+import { useOfflineManager } from '../hooks/useOfflineManager';
 import {
   requestFullscreenSafe,
   exitFullscreenSafe,
@@ -38,7 +39,7 @@ import {
 import {
   getFileViewUrl,
   getInternalStorageDownloadUrl,
-  triggerDeviceDownload,
+  triggerDeviceDownloadFromBlob,
 } from '../utils/download';
 
 interface ScanMangaViewerModalProps {
@@ -69,9 +70,13 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
   const [detectedPdfBlobUrl, setDetectedPdfBlobUrl] = useState<string | null>(null);
   const [hasDownloadedInSession, setHasDownloadedInSession] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isOfflineSaved, setIsOfflineSaved] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const webtoonRef = useRef<HTMLDivElement>(null);
+
+  const { saveOffline, isFileOffline, isSupported: isOfflineManagerSupported } = useOfflineManager();
 
   if (!episode) return null;
 
@@ -105,6 +110,7 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
 
   const viewUrl = getFileViewUrl(episode, backendUrl);
   const downloadUrl = getInternalStorageDownloadUrl(episode, backendUrl);
+  const offlineFileName = sanitizeFileName(episode.file_name, episode.title);
 
   const isPdfViewerActive = isPdf || !!detectedPdfBlobUrl;
   const activePdfUrl = detectedPdfBlobUrl || viewUrl;
@@ -117,6 +123,13 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
       return false;
     }
   }, [episode.message_id]);
+
+  // Garde le bouton de téléchargement fusionné synchronisé avec l'état réel
+  // du stockage hors-ligne (OPFS), y compris si le fichier a été sauvegardé
+  // depuis un autre écran ou une session précédente.
+  useEffect(() => {
+    setIsOfflineSaved(isOffline || isFileOffline(offlineFileName, episode.channel, episode.message_id));
+  }, [isOffline, offlineFileName, episode.channel, episode.message_id, isFileOffline]);
 
   // Load real content dynamically based on media format
   useEffect(() => {
@@ -354,9 +367,38 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
     }
   };
 
-  const handleDownload = () => {
-    triggerDeviceDownload(episode, backendUrl);
-    setHasDownloadedInSession(true);
+  const handleDownload = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      // Un seul fetch réseau : le même Blob sert ensuite à la fois la sauvegarde
+      // vers le stockage de l'appareil ET la sauvegarde hors-ligne (OPFS).
+      const res = await fetch(downloadUrl);
+      if (!res.ok) {
+        throw new Error(`Téléchargement impossible (HTTP ${res.status})`);
+      }
+      const blob = await res.blob();
+
+      // 1. Stockage de l'appareil (dossier Téléchargements) via Blob URL, sans nouvelle requête.
+      triggerDeviceDownloadFromBlob(blob, offlineFileName);
+      setHasDownloadedInSession(true);
+
+      // 2. Même Blob sauvegardé hors-ligne (OPFS) -> fait apparaître le check vert ✅.
+      if (isOfflineManagerSupported) {
+        await saveOffline(
+          downloadUrl,
+          offlineFileName,
+          blob.type,
+          { channelId: episode.channel, messageId: episode.message_id },
+          blob
+        );
+        setIsOfflineSaved(true);
+      }
+    } catch (err) {
+      console.error('[ScanMangaViewerModal] Échec du téléchargement', err);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const handleOpenExternal = () => {
@@ -519,26 +561,33 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
             </button>
           )}
 
-          {/* Download button */}
+          {/* Download button — 1 seul bouton : sauvegarde en une seule requête réseau
+              à la fois vers le stockage de l'appareil ET hors-ligne (OPFS) */}
           <button
             id="btn-download-file"
             onClick={handleDownload}
-            className="p-2 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 transition-all cursor-pointer"
-            title="Télécharger sur l'appareil"
+            disabled={isDownloading}
+            className={`p-2 rounded-xl border transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+              isOfflineSaved
+                ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/30'
+                : 'bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border-purple-500/30'
+            }`}
+            title={
+              isDownloading
+                ? 'Téléchargement en cours...'
+                : isOfflineSaved
+                ? "Déjà téléchargé (appareil + hors-ligne)"
+                : "Télécharger sur l'appareil et hors-ligne"
+            }
           >
-            <Download className="w-4 h-4" />
+            {isDownloading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : isOfflineSaved ? (
+              <CheckCircle2 className="w-4 h-4" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
           </button>
-
-          {/* Universal offline button (OPFS) - additive, works for any file type */}
-          {!isOffline && (
-            <OfflineButton
-              url={downloadUrl}
-              filename={episode.file_name}
-              channelId={episode.channel}
-              messageId={episode.message_id}
-              variant="icon"
-            />
-          )}
 
           {/* Share button */}
           <button
@@ -597,37 +646,39 @@ export const ScanMangaViewerModal: React.FC<ScanMangaViewerModalProps> = ({
 
             {/* Download Status or Call to Action */}
             <div className="space-y-3">
-              {(isAlreadyDownloaded || hasDownloadedInSession) && (
+              {(isOfflineSaved || isAlreadyDownloaded || hasDownloadedInSession) && (
                 <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center justify-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>Fichier déjà disponible dans vos Téléchargements</span>
                 </div>
               )}
 
+              {/* Bouton unique : sauvegarde en une seule requête réseau vers l'appareil ET hors-ligne (OPFS) */}
               <button
                 onClick={handleDownload}
-                className="w-full py-3 px-5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs sm:text-sm font-bold shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                disabled={isDownloading}
+                className={`w-full py-3 px-5 rounded-xl text-white text-xs sm:text-sm font-bold shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${
+                  isOfflineSaved
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500'
+                    : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500'
+                }`}
               >
-                <Download className="w-4 h-4" />
+                {isDownloading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : isOfflineSaved ? (
+                  <CheckCircle2 className="w-4 h-4" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )}
                 <span>
-                  {isAlreadyDownloaded || hasDownloadedInSession
+                  {isDownloading
+                    ? 'Téléchargement en cours...'
+                    : isOfflineSaved || isAlreadyDownloaded || hasDownloadedInSession
                     ? 'Télécharger à nouveau le fichier'
                     : "Télécharger le fichier sur l'appareil"}{' '}
                   ({episode.size_mb ? `${episode.size_mb} Mo` : 'Fichier'})
                 </span>
               </button>
-
-              {/* Universal offline button (OPFS) - additive, works for any file type */}
-              {!isOffline && (
-                <OfflineButton
-                  url={downloadUrl}
-                  filename={episode.file_name}
-                  channelId={episode.channel}
-                  messageId={episode.message_id}
-                  variant="full"
-                  className="w-full"
-                />
-              )}
             </div>
 
             {/* Compatible Applications Guide */}

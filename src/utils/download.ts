@@ -103,3 +103,38 @@ export function triggerDeviceDownload(episode: Episode, _backendUrl?: string): b
     }
   }
 }
+
+/**
+ * Triggers a device storage download from an already-downloaded Blob (no extra network request).
+ * Used when the same file also needs to be saved to offline storage (OPFS), so the caller fetches
+ * the file ONCE and reuses the resulting Blob for both destinations.
+ */
+export function triggerDeviceDownloadFromBlob(blob: Blob, fileName: string): boolean {
+  let blobUrl: string | null = null;
+  try {
+    blobUrl = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.setAttribute('download', fileName);
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+
+    const urlToRevoke = blobUrl;
+    setTimeout(() => {
+      if (document.body.contains(a)) {
+        document.body.removeChild(a);
+      }
+      URL.revokeObjectURL(urlToRevoke);
+    }, 2000);
+
+    return true;
+  } catch (err) {
+    console.error('[Download] Failed to trigger device download from blob:', err);
+    if (blobUrl) {
+      URL.revokeObjectURL(blobUrl);
+    }
+    return false;
+  }
+}
