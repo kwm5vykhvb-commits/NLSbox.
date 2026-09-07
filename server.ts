@@ -9,6 +9,41 @@ import { createServer as createViteServer } from 'vite';
 
 const RENDER_BACKEND_URL = process.env.RENDER_BACKEND_URL || 'https://nlsbox.onrender.com';
 
+// Allow-list of hostnames the server is permitted to proxy/fetch to. Defaults to only the
+// configured backend's own hostname. Additional trusted mirrors can be added via the
+// ALLOWED_BACKEND_HOSTS env var (comma-separated hostnames).
+const ALLOWED_BACKEND_HOSTS = new Set(
+  [
+    new URL(RENDER_BACKEND_URL).hostname,
+    ...(process.env.ALLOWED_BACKEND_HOSTS || '').split(','),
+  ]
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+/**
+ * Resolves the base backend URL to use for a request, validating any client-supplied
+ * `?backend=` override against a strict allow-list to prevent SSRF (Server-Side Request
+ * Forgery). Any unknown, malformed, or non-HTTP(S) value silently falls back to the
+ * default trusted backend instead of being fetched.
+ */
+function resolveBackendBaseUrl(rawBackend?: string): string {
+  if (!rawBackend) return RENDER_BACKEND_URL;
+
+  try {
+    const parsed = new URL(rawBackend);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return RENDER_BACKEND_URL;
+    }
+    if (!ALLOWED_BACKEND_HOSTS.has(parsed.hostname.toLowerCase())) {
+      return RENDER_BACKEND_URL;
+    }
+    return parsed.toString().replace(/\/+$/, '');
+  } catch {
+    return RENDER_BACKEND_URL;
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -35,8 +70,7 @@ async function startServer() {
   app.get('/api/search', async (req, res) => {
     const channel = ((req.query.channel as string) || '').trim().replace(/^@/, '');
     const query = ((req.query.q as string) || '').trim();
-    const customBackend = (req.query.backend as string) || RENDER_BACKEND_URL;
-    const cleanBase = customBackend.replace(/\/+$/, '');
+    const cleanBase = resolveBackendBaseUrl(req.query.backend as string | undefined);
 
     if (!channel) {
       return res.status(400).json({ error: 'Le paramètre channel est obligatoire.' });
@@ -105,8 +139,7 @@ async function startServer() {
 
   const handleStreamRequest = async (req: express.Request, res: express.Response) => {
     const { channel, messageId } = req.params;
-    const customBackend = (req.query.backend as string) || RENDER_BACKEND_URL;
-    const cleanBase = customBackend.replace(/\/+$/, '');
+    const cleanBase = resolveBackendBaseUrl(req.query.backend as string | undefined);
     const cleanChannel = channel.trim().replace(/^@/, '');
     const targetUrl = `${cleanBase}/download/${cleanChannel}/${messageId}`;
 
@@ -225,8 +258,7 @@ async function startServer() {
     const rawFilename = (req.query.filename as string) || `video_${channel}_${messageId}.mp4`;
     // Clean filename for header safety
     const safeFilename = rawFilename.replace(/[/\\?%*:|"<>]/g, '_');
-    const customBackend = (req.query.backend as string) || RENDER_BACKEND_URL;
-    const cleanBase = customBackend.replace(/\/+$/, '');
+    const cleanBase = resolveBackendBaseUrl(req.query.backend as string | undefined);
     const cleanChannel = channel.trim().replace(/^@/, '');
     const targetUrl = `${cleanBase}/download/${cleanChannel}/${messageId}`;
 
@@ -317,8 +349,7 @@ async function startServer() {
     const { channel, messageId } = req.params;
     const rawFilename = (req.query.filename as string) || `doc_${channel}_${messageId}`;
     const safeFilename = rawFilename.replace(/[/\\?%*:|"<>]/g, '_');
-    const customBackend = (req.query.backend as string) || RENDER_BACKEND_URL;
-    const cleanBase = customBackend.replace(/\/+$/, '');
+    const cleanBase = resolveBackendBaseUrl(req.query.backend as string | undefined);
     const cleanChannel = channel.trim().replace(/^@/, '');
     const targetUrl = `${cleanBase}/download/${cleanChannel}/${messageId}`;
 

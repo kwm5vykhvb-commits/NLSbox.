@@ -2,39 +2,62 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
     // 1. Configuration globale & chaînes (synchronisation temps réel client <-> admin)
+    // Lecture publique nécessaire (chargée dès le démarrage, indépendamment de la connexion).
+    // Écriture interdite au client : aucun code de l'app n'écrit ici, seule la console / l'Admin SDK le peut.
     match /systemConfig/{docId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if false;
     }
 
     // 2. Annonces & notifications (diffusion temps réel)
+    // Lecture publique (broadcast), écriture réservée à l'admin (jamais depuis le client).
     match /notifications/{notifId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if false;
     }
 
-    // 3. Boîte à souhaits & Signalements (accessible à tous les utilisateurs en envoi, et lisible/gérable par l'app admin)
+    // 3. Boîte à souhaits & Signalements
+    // Un utilisateur connecté peut uniquement créer un signalement ; ni lui ni personne d'autre
+    // ne peut lire/modifier/supprimer via le client (seule l'app admin gère le suivi).
     match /feedback/{feedbackId} {
-      allow read, write: if true;
+      allow create: if isSignedIn();
+      allow read, update, delete: if false;
     }
 
     // 4. Profils utilisateurs & sauvegardes Cloud
+    // Chaque utilisateur ne peut lire/écrire que son propre document, et ne peut jamais
+    // modifier lui-même ses champs de bannissement (empêche l'auto-débannissement).
     match /users/{userId} {
-      allow read, write: if true;
+      allow read: if isSelf(userId);
+      allow create: if isSelf(userId)
+        && !request.resource.data.keys().hasAny(['isBanned', 'bannedReason', 'bannedAt']);
+      allow update: if isSelf(userId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isBanned', 'bannedReason', 'bannedAt']);
+      allow delete: if false;
     }
 
     // 5. Journal d'activité (logs d'utilisation & monitoring admin)
+    // Un utilisateur connecté peut uniquement créer ses propres entrées ; la lecture/liste de
+    // l'historique (potentiellement celui de tout le monde) est réservée à l'app admin.
     match /userActivities/{activityId} {
-      allow read, write: if true;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow read, update, delete: if false;
     }
 
-    // 6. Alertes de sécurité
+    // 6. Alertes de sécurité : usage interne admin uniquement, aucun accès client.
     match /adminSecurityAlerts/{alertId} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
 
-    // Règle générale
-    match /{document=**} {
-      allow read, write: if true;
-    }
+    // Par défaut, tout document non listé ci-dessus est refusé (pas de règle générale permissive).
   }
 }
