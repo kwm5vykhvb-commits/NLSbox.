@@ -493,3 +493,43 @@ export function fuzzyMatchEpisode(episode: Episode, rawQuery: string): boolean {
 
   return false;
 }
+
+/**
+ * Scores how well a single episode field matches a search query for ranking purposes.
+ * Exact match scores highest, then prefix match, then substring match, else 0.
+ */
+function scoreFieldMatch(value: string | undefined, q: string): number {
+  const t = (value || '').trim().toLowerCase();
+  if (!t || !q) return 0;
+  if (t === q) return 1000;
+  if (t.startsWith(q)) return 900;
+  if (t.includes(q)) return 700;
+  return 0;
+}
+
+/**
+ * Scores how well an episode matches a search query for ranking purposes.
+ * Checks both title and filename so an episode is never buried just because the
+ * query matched its filename rather than its title (e.g. "naruto" -> "Naruto 1").
+ */
+export function scoreEpisodeMatch(episode: Episode, rawQuery: string): number {
+  const q = (rawQuery || '').trim().toLowerCase();
+  if (!q) return 0;
+
+  return Math.max(scoreFieldMatch(episode.title, q), scoreFieldMatch(episode.file_name, q));
+}
+
+/**
+ * Sorts episodes so the best title/filename matches for the query appear first
+ * (exact match, then starts-with, then contains). Never removes any episode —
+ * it only reorders them. Uses a stable sort: equally-scored episodes keep their
+ * original relative order.
+ */
+export function rankEpisodesByQuery<T extends Episode>(episodes: T[], rawQuery: string): T[] {
+  if (!rawQuery || !rawQuery.trim()) return episodes;
+
+  return episodes
+    .map((episode, index) => ({ episode, index, score: scoreEpisodeMatch(episode, rawQuery) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((entry) => entry.episode);
+}

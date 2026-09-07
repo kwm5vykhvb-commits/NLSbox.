@@ -20,6 +20,8 @@ import {
   Loader2,
   ArrowUp,
   MessageSquare,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Episode, DownloadTask, JikanAnimeData, HubCategory, ChannelInfo } from '../types';
 import { EpisodeCard } from './EpisodeCard';
@@ -33,7 +35,12 @@ import {
   findTypoCorrection,
   fuzzyMatchEpisode,
   getAutocompleteSuggestions,
+  rankEpisodesByQuery,
 } from '../utils/searchHelper';
+
+// Anti-flood pagination: render at most this many results at a time (Prev/Next controls)
+// instead of dumping the entire result set into the DOM in one shot.
+const SEARCH_RESULTS_PAGE_SIZE = 100;
 
 interface HomeScreenProps {
   episodes: Episode[];
@@ -87,6 +94,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [selectedSubFilter, setSelectedSubFilter] = useState<string>('all');
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
 
   // Monitor window scroll to display floating button and dismiss dropdown
   useEffect(() => {
@@ -239,7 +247,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     if (!trimmed || episodes.length > 0 || defaultFeedCacheRef.current.length === 0) {
       return [];
     }
-    return defaultFeedCacheRef.current.filter((ep) => fuzzyMatchEpisode(ep, trimmed));
+    const matches = defaultFeedCacheRef.current.filter((ep) => fuzzyMatchEpisode(ep, trimmed));
+    // Rank so exact/prefix title or filename matches appear first (never hides results)
+    return rankEpisodesByQuery(matches, trimmed);
   }, [searchInput, episodes]);
 
   // Live Instant Autocomplete Suggestions (100% Client-Side, 0 Telegram API calls while typing)
@@ -433,8 +443,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       const isVideo = MediaClassifier.isVideoFile(ep.title, ep.file_name);
       if (!isVideo) return false;
 
-      // Rejeter les résultats de moins de 10 MB (vignettes, extraits, miniatures, gifs)
-      if (typeof ep.size_mb === 'number' && ep.size_mb > 0 && ep.size_mb < 10) {
+      // Rejeter uniquement les fichiers de taille 0 (invalides/corrompus).
+      // Ne jamais masquer les épisodes légitimes de petite taille (ex: "Naruto 1").
+      if (typeof ep.size_mb === 'number' && ep.size_mb === 0) {
         return false;
       }
     }
@@ -445,8 +456,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       const isVideo = MediaClassifier.isVideoFile(ep.title, ep.file_name);
       if (!isVideo) return false;
 
-      // Rejeter les résultats de moins de 10 MB
-      if (typeof ep.size_mb === 'number' && ep.size_mb > 0 && ep.size_mb < 10) {
+      // Rejeter uniquement les fichiers de taille 0 (invalides/corrompus)
+      if (typeof ep.size_mb === 'number' && ep.size_mb === 0) {
         return false;
       }
     }
@@ -529,6 +540,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   });
 
   const isMulti = searchMode === 'multi';
+
+  // Reset to the first page whenever the active result set changes (new search, category or filter)
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [searchInput, activeCategory, selectedSubFilter, episodes]);
+
+  // Anti-flood pagination: only render SEARCH_RESULTS_PAGE_SIZE items at a time via Prev/Next
+  // controls, instead of dumping potentially hundreds of results into the DOM at once.
+  const totalResultPages = Math.max(1, Math.ceil(filteredEpisodes.length / SEARCH_RESULTS_PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalResultPages - 1);
+  const paginatedEpisodes = filteredEpisodes.slice(
+    safeCurrentPage * SEARCH_RESULTS_PAGE_SIZE,
+    (safeCurrentPage + 1) * SEARCH_RESULTS_PAGE_SIZE
+  );
 
   // Sub-filters adapted to active hub
   const getSubFilters = () => {
@@ -947,11 +972,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               </span>
               <span className="font-mono text-[11px] text-gray-400 bg-white/5 px-2 py-0.5 rounded-full">
                 {filteredEpisodes.length} élément(s) {isMulti && `• ${selectedChannels.length} sources`}
+                {totalResultPages > 1 && ` • Page ${safeCurrentPage + 1}/${totalResultPages}`}
               </span>
             </div>
 
             <div className="space-y-3">
-              {filteredEpisodes.map((episode) => {
+              {paginatedEpisodes.map((episode) => {
                 const downloadTask = activeDownloads[episode.message_id];
                 const isDownloaded = savedDownloads.some((d) => d.episode.message_id === episode.message_id);
                 const poster = matchedAnimeMAL
@@ -972,6 +998,33 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 );
               })}
             </div>
+
+            {/* Pagination controls: 100 results per page, navigated via Prev/Next (no full-list dump) */}
+            {totalResultPages > 1 && (
+              <div className="flex items-center justify-center gap-2 pt-2 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                  disabled={safeCurrentPage === 0}
+                  className="px-3 py-1.5 bg-white/5 hover:bg-white/10 active:scale-95 text-gray-300 hover:text-white rounded-lg text-xs font-medium border border-white/10 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Précédent</span>
+                </button>
+                <span className="text-xs text-gray-400 font-mono px-2">
+                  Page {safeCurrentPage + 1}/{totalResultPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalResultPages - 1, p + 1))}
+                  disabled={safeCurrentPage >= totalResultPages - 1}
+                  className="px-3 py-1.5 bg-white/5 hover:bg-white/10 active:scale-95 text-gray-300 hover:text-white rounded-lg text-xs font-medium border border-white/10 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <span>Suivant</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           /* Clean, Soft Empty State (Without artificial pills or fake mock data) */
