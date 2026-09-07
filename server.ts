@@ -9,6 +9,38 @@ import { createServer as createViteServer } from 'vite';
 
 const RENDER_BACKEND_URL = process.env.RENDER_BACKEND_URL || 'https://nlsbox.onrender.com';
 
+// Allow-list of backend hosts selectable via the client-supplied `?backend=` query
+// param. Built from the default backend's own hostname plus any extra hosts an
+// operator explicitly opts in via ALLOWED_BACKEND_HOSTS (comma-separated list of
+// full origins, e.g. "https://backup.example.com,https://staging.example.com").
+// Any host not in this map silently falls back to RENDER_BACKEND_URL — the raw
+// client-supplied string is NEVER used to build the outgoing fetch URL, which is
+// what prevents this from being an open SSRF proxy.
+const ALLOWED_BACKENDS: Record<string, string> = {
+  [new URL(RENDER_BACKEND_URL).hostname.toLowerCase()]: RENDER_BACKEND_URL,
+};
+for (const extra of (process.env.ALLOWED_BACKEND_HOSTS || '').split(',')) {
+  const trimmed = extra.trim();
+  if (!trimmed) continue;
+  try {
+    const parsed = new URL(trimmed);
+    ALLOWED_BACKENDS[parsed.hostname.toLowerCase()] = trimmed.replace(/\/+$/, '');
+  } catch {
+    // Ignore malformed entries in ALLOWED_BACKEND_HOSTS
+  }
+}
+
+function resolveBackendBaseUrl(rawBackend?: string): string {
+  if (!rawBackend) return RENDER_BACKEND_URL;
+  try {
+    const parsed = new URL(rawBackend);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return RENDER_BACKEND_URL;
+    return ALLOWED_BACKENDS[parsed.hostname.toLowerCase()] || RENDER_BACKEND_URL;
+  } catch {
+    return RENDER_BACKEND_URL;
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -35,8 +67,7 @@ async function startServer() {
   app.get('/api/search', async (req, res) => {
     const channel = ((req.query.channel as string) || '').trim().replace(/^@/, '');
     const query = ((req.query.q as string) || '').trim();
-    const customBackend = (req.query.backend as string) || RENDER_BACKEND_URL;
-    const cleanBase = customBackend.replace(/\/+$/, '');
+    const cleanBase = resolveBackendBaseUrl(req.query.backend as string | undefined);
 
     if (!channel) {
       return res.status(400).json({ error: 'Le paramètre channel est obligatoire.' });
@@ -105,8 +136,7 @@ async function startServer() {
 
   const handleStreamRequest = async (req: express.Request, res: express.Response) => {
     const { channel, messageId } = req.params;
-    const customBackend = (req.query.backend as string) || RENDER_BACKEND_URL;
-    const cleanBase = customBackend.replace(/\/+$/, '');
+    const cleanBase = resolveBackendBaseUrl(req.query.backend as string | undefined);
     const cleanChannel = channel.trim().replace(/^@/, '');
     const targetUrl = `${cleanBase}/download/${cleanChannel}/${messageId}`;
 
@@ -165,7 +195,8 @@ async function startServer() {
           res.setHeader('X-Stream-Fallback', 'true');
         }
       } catch (fbErr: any) {
-        return res.status(502).send(`Fallback stream error: ${fbErr?.message}`);
+        console.error('Fallback stream error:', fbErr?.message || fbErr);
+        return res.status(502).send('Fallback stream error');
       }
     }
 
@@ -225,8 +256,7 @@ async function startServer() {
     const rawFilename = (req.query.filename as string) || `video_${channel}_${messageId}.mp4`;
     // Clean filename for header safety
     const safeFilename = rawFilename.replace(/[/\\?%*:|"<>]/g, '_');
-    const customBackend = (req.query.backend as string) || RENDER_BACKEND_URL;
-    const cleanBase = customBackend.replace(/\/+$/, '');
+    const cleanBase = resolveBackendBaseUrl(req.query.backend as string | undefined);
     const cleanChannel = channel.trim().replace(/^@/, '');
     const targetUrl = `${cleanBase}/download/${cleanChannel}/${messageId}`;
 
@@ -317,8 +347,7 @@ async function startServer() {
     const { channel, messageId } = req.params;
     const rawFilename = (req.query.filename as string) || `doc_${channel}_${messageId}`;
     const safeFilename = rawFilename.replace(/[/\\?%*:|"<>]/g, '_');
-    const customBackend = (req.query.backend as string) || RENDER_BACKEND_URL;
-    const cleanBase = customBackend.replace(/\/+$/, '');
+    const cleanBase = resolveBackendBaseUrl(req.query.backend as string | undefined);
     const cleanChannel = channel.trim().replace(/^@/, '');
     const targetUrl = `${cleanBase}/download/${cleanChannel}/${messageId}`;
 
@@ -601,6 +630,9 @@ async function startServer() {
 
   app.get('/api/jikan/anime/:id', async (req, res) => {
     const id = req.params.id;
+    if (!/^\d+$/.test(id)) {
+      return res.status(400).json({ error: 'Invalid anime id' });
+    }
     const cacheKey = `anime_${id}`;
     const cached = jikanCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < JIKAN_CACHE_TTL) {
@@ -625,6 +657,9 @@ async function startServer() {
 
   app.get('/api/jikan/characters/:id', async (req, res) => {
     const id = req.params.id;
+    if (!/^\d+$/.test(id)) {
+      return res.status(400).json({ error: 'Invalid anime id' });
+    }
     const cacheKey = `characters_${id}`;
     const cached = jikanCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < JIKAN_CACHE_TTL) {

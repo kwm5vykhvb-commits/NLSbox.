@@ -123,10 +123,10 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
       const match = videoUrl.match(/\/download\/([^/]+)\/(\d+)/);
       const ch = match ? match[1] : (episode.channel || 'animes_vostfr').replace(/^@/, '');
       const msgId = match ? match[2] : episode.message_id;
-      return `/api/stream/${encodeURIComponent(ch)}/${encodeURIComponent(msgId)}`;
+      return `/api/stream/${encodeURIComponent(ch)}/${encodeURIComponent(msgId)}?backend=${encodeURIComponent(backendUrl)}`;
     }
     return videoUrl;
-  }, [videoUrl, isOffline, episode]);
+  }, [videoUrl, isOffline, episode, backendUrl]);
 
   const handleDeviceDownload = (e: React.MouseEvent) => {
     e.preventDefault();

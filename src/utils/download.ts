@@ -24,57 +24,70 @@ export function extractEpisodeMediaIds(episode: Episode): { channel: string; mes
 }
 
 /**
+ * Appends a `backend=` query param to a proxy URL when a non-default backend
+ * override is provided, so the local Express proxy (server.ts) knows which
+ * upstream to use. Safe to call with undefined/empty values.
+ */
+function appendBackendParam(url: string, backendUrl?: string): string {
+  if (!backendUrl) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}backend=${encodeURIComponent(backendUrl)}`;
+}
+
+/**
  * Generates the local backend download URL which sets Content-Disposition: attachment
  * to force mobile & desktop browsers to save the file into device internal storage (Downloads folder).
  */
-export function getInternalStorageDownloadUrl(episode: Episode, _backendUrl?: string): string {
+export function getInternalStorageDownloadUrl(episode: Episode, backendUrl?: string): string {
   const { channel, messageId } = extractEpisodeMediaIds(episode);
   const fileName = sanitizeFileName(episode.file_name, episode.title);
-  return `/api/download/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}?filename=${encodeURIComponent(fileName)}`;
+  const url = `/api/download/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}?filename=${encodeURIComponent(fileName)}`;
+  return appendBackendParam(url, backendUrl);
 }
 
 /**
  * Generates the local inline view URL for PDFs, images, manga scans, and documents
  */
-export function getFileViewUrl(episode: Episode, _backendUrl?: string): string {
+export function getFileViewUrl(episode: Episode, backendUrl?: string): string {
   const { channel, messageId } = extractEpisodeMediaIds(episode);
   const fileName = sanitizeFileName(episode.file_name, episode.title);
-  return `/api/view/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}?filename=${encodeURIComponent(fileName)}`;
+  const url = `/api/view/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}?filename=${encodeURIComponent(fileName)}`;
+  return appendBackendParam(url, backendUrl);
 }
 
 /**
  * Secure stream/download URL that never leaks the raw remote backend host
  */
-export function getDirectRemoteDownloadUrl(episode: Episode, _backendUrl?: string): string {
-  return getInternalStorageDownloadUrl(episode);
+export function getDirectRemoteDownloadUrl(episode: Episode, backendUrl?: string): string {
+  return getInternalStorageDownloadUrl(episode, backendUrl);
 }
 
 /**
  * VLC URL scheme to open stream directly in VLC app through local proxy
  */
-export function getVlcStreamUrl(episode: Episode, _backendUrl?: string): string {
+export function getVlcStreamUrl(episode: Episode, backendUrl?: string): string {
   const { channel, messageId } = extractEpisodeMediaIds(episode);
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const streamUrl = `${origin}/api/stream/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}`;
+  const streamUrl = appendBackendParam(`${origin}/api/stream/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}`, backendUrl);
   return `vlc://${streamUrl}`;
 }
 
 /**
  * Android Intent to open stream directly in any native Android video player (MX Player, VLC, Samsung Video, etc.)
  */
-export function getAndroidIntentUrl(episode: Episode, _backendUrl?: string): string {
+export function getAndroidIntentUrl(episode: Episode, backendUrl?: string): string {
   const { channel, messageId } = extractEpisodeMediaIds(episode);
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const streamUrl = `${origin}/api/stream/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}`;
+  const streamUrl = appendBackendParam(`${origin}/api/stream/${encodeURIComponent(channel)}/${encodeURIComponent(messageId)}`, backendUrl);
   return `intent:${streamUrl}#Intent;type=video/*;action=android.intent.action.VIEW;end`;
 }
 
 /**
  * Triggers an actual browser download that places the video file directly into the device's storage.
  */
-export function triggerDeviceDownload(episode: Episode, _backendUrl?: string): boolean {
+export function triggerDeviceDownload(episode: Episode, backendUrl?: string): boolean {
   try {
-    const downloadUrl = getInternalStorageDownloadUrl(episode);
+    const downloadUrl = getInternalStorageDownloadUrl(episode, backendUrl);
     const fileName = sanitizeFileName(episode.file_name, episode.title);
 
     const a = document.createElement('a');
@@ -95,7 +108,7 @@ export function triggerDeviceDownload(episode: Episode, _backendUrl?: string): b
     console.error('[Download] Failed to trigger device download:', err);
     // Fallback: window.open
     try {
-      const fallbackUrl = getInternalStorageDownloadUrl(episode);
+      const fallbackUrl = getInternalStorageDownloadUrl(episode, backendUrl);
       window.open(fallbackUrl, '_blank');
       return true;
     } catch {
