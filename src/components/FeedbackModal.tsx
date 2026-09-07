@@ -20,7 +20,7 @@ import { HubCategory } from '../types';
 interface FeedbackModalProps {
   isOpen: boolean;
   onClose: () => void;
-  defaultType?: 'request' | 'report';
+  initialType?: 'request' | 'report';
   initialQuery?: string;
   activeCategory?: HubCategory;
   userEmail?: string | null;
@@ -31,14 +31,14 @@ interface FeedbackModalProps {
 export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   isOpen,
   onClose,
-  defaultType = 'request',
+  initialType = 'request',
   initialQuery = '',
   activeCategory = 'anime',
   userEmail = '',
   userId = '',
   channelId = '',
 }) => {
-  const [type, setType] = useState<'request' | 'report'>(defaultType);
+  const [type, setType] = useState<'request' | 'report'>(initialType);
   const [title, setTitle] = useState(initialQuery);
   const [description, setDescription] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<HubCategory | 'general'>(activeCategory);

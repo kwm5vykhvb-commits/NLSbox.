@@ -26,12 +26,12 @@ export class NlsApiService {
    * Execute single search request securely via local Express proxy
    */
   private static async executeSingleSearch(
-    _cleanBase: string,
+    cleanBase: string,
     cleanChannel: string,
     searchQuery: string
   ): Promise<CatalogResponse> {
     try {
-      const proxyUrl = `/api/search?channel=${encodeURIComponent(cleanChannel)}&q=${encodeURIComponent(searchQuery)}`;
+      const proxyUrl = `/api/search?channel=${encodeURIComponent(cleanChannel)}&q=${encodeURIComponent(searchQuery)}&backend=${encodeURIComponent(cleanBase)}`;
       const response = await fetch(proxyUrl, {
         method: 'GET',
         headers: { Accept: 'application/json' },

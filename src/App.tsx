@@ -423,7 +423,7 @@ export default function App() {
         }
       }
     },
-    [settings.backendUrl, settings.activeCategory, settings.activeChannel, settings.searchMode, settings.selectedChannels, settings.backupChannelsByCategory]
+    [settings.backendUrl, settings.activeCategory, settings.activeChannel, settings.searchMode, settings.selectedChannels, settings.primaryChannelsByCategory, settings.multiChannelsByCategory, settings.backupChannelsByCategory]
   );
 
   // Initial load
@@ -1054,7 +1054,7 @@ export default function App() {
         isOpen={isFeedbackModalOpen}
         onClose={() => setIsFeedbackModalOpen(false)}
         activeCategory={settings.activeCategory || 'anime'}
-        activeChannel={settings.activeChannel}
+        channelId={settings.activeChannel}
         userEmail={currentUser?.email || null}
         userId={currentUser?.uid || null}
         initialQuery={feedbackInitialQuery}
